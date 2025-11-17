@@ -1,0 +1,73 @@
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: "hiveden-cli"
+    main: ./cmd/cli/main.go
+    binary: hiveden
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+
+  - id: "hiveden-api"
+    main: ./cmd/api/main.go
+    binary: hiveden-api
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  name_template: "{{ .Tag }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+nfpms:
+  - id: hiveden-cli
+    builds:
+      - hiveden-cli
+    package_name: hiveden-cli
+    vendor: hiveden
+    homepage: https://github.com/hiveden/hiveden
+    maintainer: Hiveden <support@hiveden.io>
+    description: Docker container manager
+    license: Apache 2.0
+    formats:
+      - deb
+      - rpm
+      - archlinux
+      - apk
+    bindir: /usr/bin
+
+  - id: hiveden-api
+    builds:
+      - hiveden-api
+    package_name: hiveden-api
+    vendor: hiveden
+    homepage: https://github.com/hiveden/hiveden
+    maintainer: Hiveden <support@hiveden.io>
+    description: Docker container manager API
+    license: Apache 2.0
+    formats:
+      - deb
+      - rpm
+      - archlinux
+      - apk
+    bindir: /usr/bin
+    contents:
+      - src: ./packaging/systemd/hiveden-api.service
+        dst: /etc/systemd/system/hiveden-api.service
+    scripts:
+      postinstall: ./packaging/systemd/postinstall.sh

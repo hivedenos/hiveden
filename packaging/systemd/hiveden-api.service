@@ -1,0 +1,14 @@
+[Unit]
+Description=Hiveden API
+After=network.target
+
+[Service]
+Type=simple
+User=hiveden-api
+Group=hiveden-api
+WorkingDirectory=/var/lib/hiveden-api
+ExecStart=/usr/bin/hiveden-api
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
