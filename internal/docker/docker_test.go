@@ -1,4 +1,3 @@
-
 package docker
 
 import (
@@ -7,7 +6,6 @@ import (
 	"io"
 	"testing"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
@@ -15,13 +13,17 @@ import (
 )
 
 type mockClient struct {
-	createContainerErr bool
-	startContainerErr  bool
-	stopContainerErr   bool
-	removeContainerErr bool
-	listContainersErr  bool
-	lastCreateConfig   *container.Config
-	ContainerListFunc  func(ctx context.Context, options container.ListOptions) ([]types.Container, error)
+	createContainerErr   bool
+	startContainerErr    bool
+	stopContainerErr     bool
+	removeContainerErr   bool
+	listContainersErr    bool
+	createNetworkErr     bool
+	removeNetworkErr     bool
+	listNetworksErr      bool
+	lastCreateConfig     *container.Config
+	lastNetworkingConfig *network.NetworkingConfig
+	ContainerListFunc    func(ctx context.Context, options container.ListOptions) ([]container.Summary, error)
 }
 
 func (m *mockClient) ContainerCreate(ctx context.Context, config *container.Config, hostConfig *container.HostConfig, networkingConfig *network.NetworkingConfig, platform *v1.Platform, containerName string) (container.CreateResponse, error) {
@@ -29,6 +31,7 @@ func (m *mockClient) ContainerCreate(ctx context.Context, config *container.Conf
 		return container.CreateResponse{}, errors.New("failed to create container")
 	}
 	m.lastCreateConfig = config
+	m.lastNetworkingConfig = networkingConfig
 	return container.CreateResponse{ID: "12345"}, nil
 }
 
@@ -53,15 +56,38 @@ func (m *mockClient) ContainerRemove(ctx context.Context, containerID string, op
 	return nil
 }
 
-func (m *mockClient) ContainerList(ctx context.Context, options container.ListOptions) ([]types.Container, error) {
+func (m *mockClient) ContainerList(ctx context.Context, options container.ListOptions) ([]container.Summary, error) {
 	if m.ContainerListFunc != nil {
 		return m.ContainerListFunc(ctx, options)
 	}
 	if m.listContainersErr {
 		return nil, errors.New("failed to list containers")
 	}
-	return []types.Container{
+	return []container.Summary{
 		{ID: "1234567890ab", Names: []string{"/test-container"}},
+	}, nil
+}
+
+func (m *mockClient) NetworkCreate(ctx context.Context, name string, options network.CreateOptions) (network.CreateResponse, error) {
+	if m.createNetworkErr {
+		return network.CreateResponse{}, errors.New("failed to create network")
+	}
+	return network.CreateResponse{ID: "net-12345"}, nil
+}
+
+func (m *mockClient) NetworkRemove(ctx context.Context, networkID string) error {
+	if m.removeNetworkErr {
+		return errors.New("failed to remove network")
+	}
+	return nil
+}
+
+func (m *mockClient) NetworkList(ctx context.Context, options network.ListOptions) ([]network.Summary, error) {
+	if m.listNetworksErr {
+		return nil, errors.New("failed to list networks")
+	}
+	return []network.Summary{
+		{ID: "net-12345", Name: "test-network"},
 	}, nil
 }
 
@@ -70,18 +96,21 @@ func (m *mockClient) ImagePull(ctx context.Context, ref string, options image.Pu
 }
 
 func TestNewDockerManager(t *testing.T) {
-	dm, err := NewDockerManager()
+	dm, err := NewDockerManager("test-network")
 	if err != nil {
 		t.Fatalf("NewDockerManager() error = %v", err)
 	}
 	if dm.cli == nil {
 		t.Fatal("expected cli to be initialized")
 	}
+	if dm.networkName != "test-network" {
+		t.Fatalf("expected networkName to be 'test-network', got '%s'", dm.networkName)
+	}
 }
 
 func TestCreateContainer(t *testing.T) {
 	mock := &mockClient{}
-	dm := &DockerManager{cli: mock}
+	dm := &DockerManager{cli: mock, networkName: "test-network"}
 	_, err := dm.CreateContainer(context.Background(), "test-image", "test-container")
 	if err != nil {
 		t.Fatalf("CreateContainer() error = %v", err)
@@ -89,6 +118,9 @@ func TestCreateContainer(t *testing.T) {
 
 	if managedBy, ok := mock.lastCreateConfig.Labels["managed-by"]; !ok || managedBy != "hiveden" {
 		t.Errorf("expected managed-by label to be 'hiveden', got '%s'", managedBy)
+	}
+	if _, ok := mock.lastNetworkingConfig.EndpointsConfig["test-network"]; !ok {
+		t.Errorf("expected container to be attached to 'test-network'")
 	}
 }
 
@@ -164,15 +196,15 @@ func TestListContainersWithLabel(t *testing.T) {
 	dm := &DockerManager{cli: mock}
 
 	// Mock a container with the managed-by label
-	mockContainer := types.Container{
+	mockContainer := container.Summary{
 		ID:      "1234567890ab",
 		Names:   []string{"/test-container"},
 		Image:   "test-image",
 		ImageID: "img-123",
 		Labels:  map[string]string{"managed-by": "hiveden"},
 	}
-	mock.ContainerListFunc = func(ctx context.Context, options container.ListOptions) ([]types.Container, error) {
-		return []types.Container{mockContainer}, nil
+	mock.ContainerListFunc = func(ctx context.Context, options container.ListOptions) ([]container.Summary, error) {
+		return []container.Summary{mockContainer}, nil
 	}
 
 	containers, err := dm.ListContainers(context.Background(), true)
@@ -192,6 +224,57 @@ func TestListContainersWithLabel(t *testing.T) {
 func TestListContainersError(t *testing.T) {
 	dm := &DockerManager{cli: &mockClient{listContainersErr: true}}
 	_, err := dm.ListContainers(context.Background(), true)
+	if err == nil {
+		t.Fatal("expected an error, but got none")
+	}
+}
+
+func TestCreateNetwork(t *testing.T) {
+	dm := &DockerManager{cli: &mockClient{}}
+	_, err := dm.CreateNetwork(context.Background(), "test-network")
+	if err != nil {
+		t.Fatalf("CreateNetwork() error = %v", err)
+	}
+}
+
+func TestCreateNetworkError(t *testing.T) {
+	dm := &DockerManager{cli: &mockClient{createNetworkErr: true}}
+	_, err := dm.CreateNetwork(context.Background(), "test-network")
+	if err == nil {
+		t.Fatal("expected an error, but got none")
+	}
+}
+
+func TestRemoveNetwork(t *testing.T) {
+	dm := &DockerManager{cli: &mockClient{}}
+	err := dm.RemoveNetwork(context.Background(), "net-12345")
+	if err != nil {
+		t.Fatalf("RemoveNetwork() error = %v", err)
+	}
+}
+
+func TestRemoveNetworkError(t *testing.T) {
+	dm := &DockerManager{cli: &mockClient{removeNetworkErr: true}}
+	err := dm.RemoveNetwork(context.Background(), "net-12345")
+	if err == nil {
+		t.Fatal("expected an error, but got none")
+	}
+}
+
+func TestListNetworks(t *testing.T) {
+	dm := &DockerManager{cli: &mockClient{}}
+	networks, err := dm.ListNetworks(context.Background())
+	if err != nil {
+		t.Fatalf("ListNetworks() error = %v", err)
+	}
+	if len(networks) != 1 {
+		t.Fatalf("expected 1 network, got %d", len(networks))
+	}
+}
+
+func TestListNetworksError(t *testing.T) {
+	dm := &DockerManager{cli: &mockClient{listNetworksErr: true}}
+	_, err := dm.ListNetworks(context.Background())
 	if err == nil {
 		t.Fatal("expected an error, but got none")
 	}

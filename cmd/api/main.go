@@ -7,25 +7,37 @@ import (
 	"github.com/hiveden/hiveden/internal/docker"
 
 	"github.com/gin-gonic/gin"
+	"github.com/spf13/viper"
 )
 
 func main() {
-	dockerManager, err := docker.NewDockerManager()
-	if err != nil {
-		log.Fatalf("Failed to create Docker manager: %v", err)
-	}
+	viper.SetDefault("network_name", docker.DefaultNetworkName)
+	v,_ := docker.NewDockerManager(viper.GetString("network_name"))
+	dm := v
 
-	apiHandler := api.NewAPIHandler(dockerManager)
+	apiHandler := api.NewAPIHandler(dm)
 
 	r := gin.Default()
-	r.GET("/containers", apiHandler.ListContainers)
-	r.POST("/containers", apiHandler.CreateContainer)
-	r.POST("/containers/:id/start", apiHandler.StartContainer)
-	r.POST("/containers/:id/stop", apiHandler.StopContainer)
-	r.DELETE("/containers/:id", apiHandler.RemoveContainer)
 
-	log.Println("Starting API server on :8081")
-	if err := r.Run(":8081"); err != nil {
-		log.Fatalf("Failed to start API server: %v", err)
+	dockerGroup := r.Group("/docker")
+
+	containersGroup := dockerGroup.Group("/containers")
+	{
+		containersGroup.GET("", apiHandler.ListContainers)
+		containersGroup.POST("", apiHandler.CreateContainer)
+		containersGroup.POST("/:id/start", apiHandler.StartContainer)
+		containersGroup.POST("/:id/stop", apiHandler.StopContainer)
+		containersGroup.DELETE("/:id", apiHandler.RemoveContainer)
+	}
+
+	networksGroup := dockerGroup.Group("/networks")
+	{
+		networksGroup.GET("", apiHandler.ListNetworks)
+		networksGroup.POST("", apiHandler.CreateNetwork)
+		networksGroup.DELETE("/:id", apiHandler.RemoveNetwork)
+	}
+
+	if err := r.Run(":8080"); err != nil {
+		log.Fatalf("failed to run server: %v", err)
 	}
 }

@@ -8,23 +8,33 @@ import (
 	"time"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"gopkg.in/yaml.v2"
 )
 
+const (
+	DefaultNetworkName = "hiveden-network"
+)
 
 // DockerManager provides methods to interact with the Docker API.
 type DockerManager struct {
-	cli Client
+	cli         Client
+	networkName string
 }
 
 // NewDockerManager creates a new DockerManager instance.
-func NewDockerManager() (*DockerManager, error) {
+func NewDockerManager(networkName string) (*DockerManager, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, err
 	}
-	return &DockerManager{cli: cli}, nil
+
+	if networkName == "" {
+		networkName = DefaultNetworkName
+	}
+
+	return &DockerManager{cli: cli, networkName: networkName}, nil
 }
 
 // ListContainers lists containers. The 'all' parameter determines whether to list all containers or only running ones.
@@ -81,14 +91,19 @@ func formatUptime(createdAt int64) string {
 	return "Less than a minute"
 }
 
-// CreateContainer creates a new container.
+// CreateContainer creates a new container and attaches it to the hiveden network.
 func (dm *DockerManager) CreateContainer(ctx context.Context, imageName string, containerName string) (container.CreateResponse, error) {
 	return dm.cli.ContainerCreate(ctx, &container.Config{
 		Image: imageName,
 		Labels: map[string]string{
 			"managed-by": "hiveden",
 		},
-	}, nil, nil, nil, containerName)
+	}, &container.HostConfig{},
+		&network.NetworkingConfig{
+			EndpointsConfig: map[string]*network.EndpointSettings{
+				dm.networkName: {},
+			},
+		}, nil, containerName)
 }
 
 // StartContainer starts a container.
@@ -106,6 +121,33 @@ func (dm *DockerManager) RemoveContainer(ctx context.Context, containerID string
 	return dm.cli.ContainerRemove(ctx, containerID, container.RemoveOptions{})
 }
 
+// CreateNetwork creates a new network.
+func (dm *DockerManager) CreateNetwork(ctx context.Context, networkName string) (network.CreateResponse, error) {
+	return dm.cli.NetworkCreate(ctx, networkName, network.CreateOptions{})
+}
+
+// RemoveNetwork removes a network.
+func (dm *DockerManager) RemoveNetwork(ctx context.Context, networkID string) error {
+	return dm.cli.NetworkRemove(ctx, networkID)
+}
+
+// ListNetworks lists all networks.
+func (dm *DockerManager) ListNetworks(ctx context.Context) ([]NetworkInfo, error) {
+	networks, err := dm.cli.NetworkList(ctx, network.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	var networkInfos []NetworkInfo
+	for _, n := range networks {
+		networkInfos = append(networkInfos, NetworkInfo{
+			ID:   n.ID,
+			Name: n.Name,
+		})
+	}
+
+	return networkInfos, nil
+}
 
 // ExportManagedContainers exports all containers managed by hiveden to a YAML file.
 func (dm *DockerManager) ExportManagedContainers(ctx context.Context, filePath string) error {

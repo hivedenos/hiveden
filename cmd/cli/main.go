@@ -9,15 +9,27 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
+var dockerManager *docker.DockerManager
+
 func main() {
-	dockerManager, err := docker.NewDockerManager()
-	if err != nil {
-		log.Fatalf("Failed to create Docker manager: %v", err)
+	rootCmd := &cobra.Command{
+		Use: "hiveden",
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			var err error
+			dockerManager, err = docker.NewDockerManager(viper.GetString("network_name"))
+			if err != nil {
+				return fmt.Errorf("failed to create Docker manager: %v", err)
+			}
+			return nil
+		},
 	}
 
-	rootCmd := &cobra.Command{Use: "hiveden"}
+	rootCmd.PersistentFlags().String("network-name", "hiveden-network", "Name for the Docker network")
+	viper.BindPFlag("network_name", rootCmd.PersistentFlags().Lookup("network-name"))
+	viper.SetDefault("network_name", docker.DefaultNetworkName)
 
 	var configFile string
 	rootCmd.PersistentFlags().StringVar(&configFile, "config", "cmd/cli/config.yaml", "config file (default is cmd/cli/config.yaml)")
@@ -27,16 +39,16 @@ func main() {
 		Short: "Manage containers",
 	}
 
-	containersCmd.AddCommand(buildListCommand(dockerManager))
-	containersCmd.AddCommand(buildCreateCommand(dockerManager))
-	containersCmd.AddCommand(buildStartCommand(dockerManager))
-	containersCmd.AddCommand(buildStopCommand(dockerManager))
-	containersCmd.AddCommand(buildRemoveCommand(dockerManager))
-	containersCmd.AddCommand(buildRunAllCommand(dockerManager, &configFile))
+	containersCmd.AddCommand(buildListCommand())
+	containersCmd.AddCommand(buildCreateCommand())
+	containersCmd.AddCommand(buildStartCommand())
+	containersCmd.AddCommand(buildStopCommand())
+	containersCmd.AddCommand(buildRemoveCommand())
+	containersCmd.AddCommand(buildRunAllCommand(&configFile))
 
 	rootCmd.AddCommand(containersCmd)
 
-	containersCmd.AddCommand(buildExportCommand(dockerManager))
+	containersCmd.AddCommand(buildExportCommand())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
@@ -44,14 +56,14 @@ func main() {
 	}
 }
 
-func buildListCommand(dm *docker.DockerManager) *cobra.Command {
+func buildListCommand() *cobra.Command {
 	var all bool
 
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List all containers",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			containers, err := dm.ListContainers(cmd.Context(), all)
+			containers, err := dockerManager.ListContainers(cmd.Context(), all)
 			if err != nil {
 				return err
 			}
@@ -69,14 +81,14 @@ func buildListCommand(dm *docker.DockerManager) *cobra.Command {
 	return cmd
 }
 
-func buildCreateCommand(dm *docker.DockerManager) *cobra.Command {
+func buildCreateCommand() *cobra.Command {
 	var imageName, containerName string
 
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new container",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp, err := dm.CreateContainer(cmd.Context(), imageName, containerName)
+			resp, err := dockerManager.CreateContainer(cmd.Context(), imageName, containerName)
 			if err != nil {
 				return err
 			}
@@ -93,35 +105,35 @@ func buildCreateCommand(dm *docker.DockerManager) *cobra.Command {
 	return cmd
 }
 
-func buildStartCommand(dm *docker.DockerManager) *cobra.Command {
+func buildStartCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "start [containerID]",
 		Short: "Start a container",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return dm.StartContainer(cmd.Context(), args[0])
+			return dockerManager.StartContainer(cmd.Context(), args[0])
 		},
 	}
 }
 
-func buildStopCommand(dm *docker.DockerManager) *cobra.Command {
+func buildStopCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "stop [containerID]",
 		Short: "Stop a container",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return dm.StopContainer(cmd.Context(), args[0])
+			return dockerManager.StopContainer(cmd.Context(), args[0])
 		},
 	}
 }
 
-func buildRemoveCommand(dm *docker.DockerManager) *cobra.Command {
+func buildRemoveCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "remove [containerID]",
 		Short: "Remove a container",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return dm.RemoveContainer(cmd.Context(), args[0])
+			return dockerManager.RemoveContainer(cmd.Context(), args[0])
 		},
 	}
 }
@@ -135,7 +147,7 @@ type Config struct {
 	Containers []ContainerConfig `yaml:"containers"`
 }
 
-func buildRunAllCommand(dm *docker.DockerManager, configFile *string) *cobra.Command {
+func buildRunAllCommand(configFile *string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "run-all",
 		Short: "Create and start all containers from a config file",
@@ -152,14 +164,14 @@ func buildRunAllCommand(dm *docker.DockerManager, configFile *string) *cobra.Com
 
 			for _, containerConfig := range config.Containers {
 				fmt.Printf("Creating container %s with image %s...\n", containerConfig.Name, containerConfig.Image)
-				resp, err := dm.CreateContainer(cmd.Context(), containerConfig.Image, containerConfig.Name)
+				resp, err := dockerManager.CreateContainer(cmd.Context(), containerConfig.Image, containerConfig.Name)
 				if err != nil {
 					log.Printf("Failed to create container %s: %v", containerConfig.Name, err)
 					continue
 				}
 
 				fmt.Printf("Starting container %s (%s)...\n", containerConfig.Name, resp.ID[:12])
-				if err := dm.StartContainer(cmd.Context(), resp.ID); err != nil {
+				if err := dockerManager.StartContainer(cmd.Context(), resp.ID); err != nil {
 					log.Printf("Failed to start container %s: %v", containerConfig.Name, err)
 				}
 			}
@@ -169,7 +181,7 @@ func buildRunAllCommand(dm *docker.DockerManager, configFile *string) *cobra.Com
 	}
 }
 
-func buildExportCommand(dm *docker.DockerManager) *cobra.Command {
+func buildExportCommand() *cobra.Command {
 	var filePath string
 
 	cmd := &cobra.Command{
@@ -179,7 +191,7 @@ func buildExportCommand(dm *docker.DockerManager) *cobra.Command {
 			if filePath == "" {
 				return fmt.Errorf("file path must be specified with --file")
 			}
-			return dm.ExportManagedContainers(cmd.Context(), filePath)
+			return dockerManager.ExportManagedContainers(cmd.Context(), filePath)
 		},
 	}
 
