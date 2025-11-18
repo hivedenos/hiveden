@@ -33,3 +33,19 @@ func (dm *DockerManager) ListNetworks(ctx context.Context) ([]NetworkInfo, error
 
 	return networkInfos, nil
 }
+
+// NetworkExists checks if a network exists.
+func (dm *DockerManager) NetworkExists(ctx context.Context, networkName string) (bool, error) {
+	networks, err := dm.cli.NetworkList(ctx, network.ListOptions{})
+	if err != nil {
+		return false, err
+	}
+
+	for _, n := range networks {
+		if n.Name == networkName {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}

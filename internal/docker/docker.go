@@ -19,7 +19,7 @@ const (
 
 // DockerManager provides methods to interact with the Docker API.
 type DockerManager struct {
-	cli         Client
+	cli         *client.Client
 	networkName string
 }
 
@@ -93,6 +93,15 @@ func formatUptime(createdAt int64) string {
 
 // CreateContainer creates a new container and attaches it to the hiveden network.
 func (dm *DockerManager) CreateContainer(ctx context.Context, imageName string, containerName string) (container.CreateResponse, error) {
+	networkExists, err := dm.NetworkExists(ctx, dm.networkName)
+	if err != nil {
+		return container.CreateResponse{}, fmt.Errorf("failed to check if network exists: %w", err)
+	}
+
+	if !networkExists {
+		return container.CreateResponse{}, fmt.Errorf("network %s does not exist", dm.networkName)
+	}
+
 	return dm.cli.ContainerCreate(ctx, &container.Config{
 		Image: imageName,
 		Labels: map[string]string{

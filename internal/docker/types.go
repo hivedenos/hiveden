@@ -34,6 +34,7 @@ type Client interface {
 	NetworkCreate(ctx context.Context, name string, options network.CreateOptions) (network.CreateResponse, error)
 	NetworkRemove(ctx context.Context, networkID string) error
 	NetworkList(ctx context.Context, options network.ListOptions) ([]network.Summary, error)
+	NetworkExists(ctx context.Context, networkName string) (bool, error)
 }
 
 // ContainerConfig represents a container in the YAML config file.
