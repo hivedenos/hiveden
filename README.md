@@ -95,6 +95,37 @@ hiveden server --host 0.0.0.0 --port 8000
 
 Once the server is running, you can access the interactive API documentation (Swagger UI) at `http://localhost:8000/docs`.
 
+## :gear: Configuration
+
+Hiveden is configured using a single YAML file, `config.yaml`. This file allows you to define the desired state of your server in a declarative way. The CLI searches for this file in the following locations, in order:
+
+1. The path specified by the `--config` flag.
+2. `config.yaml` in the current directory.
+3. `~/.config/hiveden/config.yaml`
+4. `/etc/hiveden/config.yaml`
+
+Here's an example of what the configuration file looks like:
+
+```yaml
+# Example configuration for Hiveden
+
+docker:
+  # The name of the Docker network to use.
+  network_name: hiveden-net
+
+  # A list of containers to manage.
+  containers:
+    - name: my-container
+      image: ubuntu:latest
+      command: sleep infinity
+      env:
+        - name: MY_VAR
+          value: my_value
+      ports:
+        - host_port: 8080
+          container_port: 80
+```
+
 ## :test_tube: Running Tests
 
 We use `pytest` for testing. To run the test suite, simply run the following command from the root of the project:

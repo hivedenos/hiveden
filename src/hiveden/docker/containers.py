@@ -1,14 +1,29 @@
 import docker
 from docker import errors
 
-from hiveden.docker.models import DockerContainer
+from hiveden.docker.images import image_exists, pull_image
 from hiveden.docker.networks import create_network, network_exists
 
 client = docker.from_env()
 
 
-def create_container(image, command=None, network_name="hiveden-net", env=None, **kwargs):
+def create_container(
+    image,
+    command=None,
+    network_name="hiveden-net",
+    env=None,
+    ports=None,
+    **kwargs,
+):
     """Create a new Docker container and connect it to the hiveden network."""
+    if not image_exists(image):
+        print(f"Image '{image}' not found locally. Pulling from registry...")
+        try:
+            pull_image(image)
+            print(f"Image '{image}' pulled successfully.")
+        except errors.ImageNotFound:
+            raise errors.ImageNotFound(f"Image '{image}' not found in registry.")
+
     if not network_exists(network_name):
         create_network(network_name)
 
@@ -21,7 +36,14 @@ def create_container(image, command=None, network_name="hiveden-net", env=None, 
         for item in env:
             environment.append(f"{item.name}={item.value}")
 
-    container = client.containers.create(image, command, environment=environment, **kwargs)
+    port_bindings = {}
+    if ports:
+        for port in ports:
+            port_bindings[f"{port.container_port}/{port.protocol}"] = port.host_port
+
+    container = client.containers.create(
+        image, command, environment=environment, ports=port_bindings, **kwargs
+    )
     network = client.networks.get(network_name)
     network.connect(container)
     return container
@@ -34,25 +56,10 @@ def get_container(container_id):
 
 def list_containers(all=False, only_managed=False, **kwargs):
     """List all Docker containers."""
-    response_data = []
     if only_managed:
         kwargs["filters"] = {"label": "managed-by=hiveden"}
 
-    for c in client.containers.list(all=all, **kwargs):
-        try:
-            image = c.image.tags[0] if c.image and c.image.tags else "N/A"
-        except errors.ImageNotFound:
-            image = "Not Found (404)"
-        response_data.append(
-            DockerContainer(
-                name=c.name,
-                image=image,
-                status=c.status,
-                managed_by_hiveden="managed-by" in c.labels and c.labels["managed-by"] == "hiveden",
-            )
-        )
-    return response_data
-
+    return client.containers.list(all=all, **kwargs)
 
 
 def stop_container(container_id):

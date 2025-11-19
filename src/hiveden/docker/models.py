@@ -7,13 +7,17 @@ class EnvVar(BaseModel):
     name: str
     value: str
 
-class ContainerCreate(BaseModel):
-    image: str
+class Port(BaseModel):
+    host_port: int
+    container_port: int
+    protocol: str = "tcp"
+
+class DockerContainer(BaseModel):
     name: str
+    image: str
     command: Optional[str] = None
-    detach: bool = True
-    network_name: Optional[str] = "hiveden-net"
     env: Optional[List[EnvVar]] = None
+    ports: Optional[List[Port]] = None
 
 class NetworkCreate(BaseModel):
     name: str
@@ -55,9 +59,3 @@ class Network(BaseModel):
     Containers: Dict
     Options: Optional[Dict] = None
     Labels: Optional[Dict] = None
-
-class DockerContainer(BaseModel):
-    name: str
-    image: str
-    status: str
-    managed_by_hiveden: bool

@@ -1,6 +1,7 @@
 from docker import errors
 
 from hiveden.docker.containers import create_container, list_containers
+from hiveden.docker.models import DockerContainer
 from hiveden.docker.networks import create_network, list_networks
 
 
@@ -22,25 +23,27 @@ def apply_configuration(config):
 
     # Create containers
     for container_config in config["containers"]:
-        container_name = container_config["name"]
-        image = container_config["image"]
+        container = DockerContainer(**container_config)
         try:
-            containers = list_containers(all=True, filters={"name": container_name})
+            containers = list_containers(all=True, filters={"name": container.name})
             if not containers:
                 create_container(
-                    image=image,
-                    name=container_name,
+                    image=container.image,
+                    name=container.name,
+                    command=container.command,
                     detach=True,
                     network_name=network_name,
+                    env=container.env,
+                    ports=container.ports,
                 )
-                messages.append(f"Container '{container_name}' created.")
+                messages.append(f"Container '{container.name}' created.")
             else:
-                messages.append(f"Container '{container_name}' already exists.")
+                messages.append(f"Container '{container.name}' already exists.")
         except errors.ImageNotFound:
             messages.append(
-                f"Image '{image}' not found for container '{container_name}'."
+                f"Image '{container.image}' not found for container '{container.name}'."
             )
         except errors.APIError as e:
-            messages.append(f"Error creating container '{container_name}': {e}")
+            messages.append(f"Error creating container '{container.name}': {e}")
 
     return messages

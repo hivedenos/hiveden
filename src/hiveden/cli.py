@@ -5,24 +5,10 @@ import yaml
 
 
 @click.group()
-@click.option('--config', help='Path to the configuration file.')
 @click.pass_context
-def main(ctx, config):
+def main(ctx):
     """Hiveden CLI"""
     ctx.ensure_object(dict)
-    if config:
-        config_path = config
-    elif os.path.exists('config.yaml'):
-        config_path = 'config.yaml'
-    elif os.path.exists(os.path.expanduser('~/.config/hiveden/config.yaml')):
-        config_path = os.path.expanduser('~/.config/hiveden/config.yaml')
-    elif os.path.exists('/etc/hiveden/config.yaml'):
-        config_path = '/etc/hiveden/config.yaml'
-    else:
-        raise click.FileError('Configuration file not found.')
-
-    with open(config_path, 'r') as f:
-        ctx.obj['config'] = yaml.safe_load(f)
 
 
 @main.group()
@@ -33,7 +19,9 @@ def docker(ctx):
 
 
 @docker.command(name="list-containers")
-@click.option('--only-managed', is_flag=True, help='List only containers managed by hiveden.')
+@click.option(
+    "--only-managed", is_flag=True, help="List only containers managed by hiveden."
+)
 @click.pass_context
 def list_containers(ctx, only_managed):
     """List all docker containers."""
@@ -45,54 +33,31 @@ def list_containers(ctx, only_managed):
 
 
 @main.command()
-@click.pass_context
-def apply(ctx):
-    """Apply the docker configuration."""
-    from docker import errors
+@click.option("--config", help="Path to the configuration file.")
+def apply(config):
+    """Apply the configuration from a file."""
+    if config:
+        config_path = config
+    elif os.path.exists("config.yaml"):
+        config_path = "config.yaml"
+    elif os.path.exists(os.path.expanduser("~/.config/hiveden/config.yaml")):
+        config_path = os.path.expanduser("~/.config/hiveden/config.yaml")
+    elif os.path.exists("/etc/hiveden/config.yaml"):
+        config_path = "/etc/hiveden/config.yaml"
+    else:
+        raise click.FileError("Configuration file not found.")
 
-    from hiveden.docker.containers import create_container, list_containers
-    from hiveden.docker.models import EnvVar
+    with open(config_path, "r") as f:
+        full_config = yaml.safe_load(f)
 
-    config = ctx.obj["config"]["docker"]
-    network_name = config.get("network_name", "hiveden-net")
+    if "docker" in full_config:
+        from hiveden.docker.actions import (
+            apply_configuration as apply_docker_configuration,
+        )
 
-    # Create containers
-    for container_config in config.get("containers", []):
-        container_name = container_config["name"]
-        image = container_config["image"]
-        command = container_config.get("command")
-        env_vars = container_config.get("env")
-        env = [EnvVar(**e) for e in env_vars] if env_vars else None
-
-        try:
-            containers = list_containers(all=True, filters={"name": container_name})
-            if not containers:
-                create_container(
-                    image=image,
-                    name=container_name,
-                    command=command,
-                    detach=True,
-                    network_name=network_name,
-                    env=env,
-                )
-                click.echo(
-                    f"Container '{container_name}' created and connected to '{network_name}'."
-                )
-            else:
-                click.echo(f"Container '{container_name}' already exists.")
-        except errors.ImageNotFound:
-            click.echo(
-                f"Image '{image}' not found for container '{container_name}'.", err=True
-            )
-        except errors.APIError as e:
-            click.echo(f"Error creating container '{container_name}': {e}", err=True)
-
-
-@docker.command()
-@click.pass_context
-def hello(ctx):
-    """Prints the docker config."""
-    click.echo(ctx.obj["config"]["docker"])
+        messages = apply_docker_configuration(full_config["docker"])
+        for message in messages:
+            click.echo(message)
 
 
 @main.group()

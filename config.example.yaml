@@ -12,3 +12,6 @@ docker:
       env:
         - name: MY_VAR
           value: my_value
+      ports:
+        - host_port: 8080
+          container_port: 80
