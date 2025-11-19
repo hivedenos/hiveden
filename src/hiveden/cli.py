@@ -136,5 +136,15 @@ def get_hw():
     from hiveden.hwosinfo.hw import get_hw_info
     click.echo(json.dumps(get_hw_info(), indent=4))
 
+@main.command()
+@click.option('--host', default='127.0.0.1', help='The host to bind to.')
+@click.option('--port', default=8000, help='The port to bind to.')
+def server(host, port):
+    """Run the FastAPI server."""
+    import uvicorn
+
+    from hiveden.api.server import app
+    uvicorn.run(app, host=host, port=port)
+
 if __name__ == "__main__":
     main()

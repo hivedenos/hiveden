@@ -1,0 +1,12 @@
+#!/bin/sh
+set -e
+
+if getent passwd hiveden >/dev/null; then
+    deluser --system hiveden
+fi
+
+if getent group hiveden >/dev/null; then
+    delgroup --system hiveden
+fi
+
+exit 0

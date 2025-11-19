@@ -1,0 +1,12 @@
+#!/bin/sh
+set -e
+
+if ! getent group hiveden >/dev/null; then
+    addgroup --system hiveden
+fi
+
+if ! getent passwd hiveden >/dev/null; then
+    adduser --system --ingroup hiveden --home /opt/hiveden --no-create-home --shell /bin/false hiveden
+fi
+
+exit 0

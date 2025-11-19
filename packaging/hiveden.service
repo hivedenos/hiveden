@@ -1,0 +1,13 @@
+[Unit]
+Description=Hiveden Server
+After=network.target
+
+[Service]
+User=hiveden
+Group=hiveden
+WorkingDirectory=/opt/hiveden
+ExecStart=/usr/bin/hiveden server --host 0.0.0.0
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
