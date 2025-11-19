@@ -44,29 +44,36 @@ def list_containers(ctx, only_managed):
         click.echo(f"{container.name} - {container.image} - {container.status}")
 
 
-@docker.command()
+@main.command()
 @click.pass_context
 def apply(ctx):
     """Apply the docker configuration."""
     from docker import errors
 
     from hiveden.docker.containers import create_container, list_containers
+    from hiveden.docker.models import EnvVar
 
     config = ctx.obj["config"]["docker"]
-    network_name = config["network_name"]
+    network_name = config.get("network_name", "hiveden-net")
 
     # Create containers
-    for container_config in config["containers"]:
+    for container_config in config.get("containers", []):
         container_name = container_config["name"]
         image = container_config["image"]
+        command = container_config.get("command")
+        env_vars = container_config.get("env")
+        env = [EnvVar(**e) for e in env_vars] if env_vars else None
+
         try:
             containers = list_containers(all=True, filters={"name": container_name})
             if not containers:
                 create_container(
                     image=image,
                     name=container_name,
+                    command=command,
                     detach=True,
                     network_name=network_name,
+                    env=env,
                 )
                 click.echo(
                     f"Container '{container_name}' created and connected to '{network_name}'."

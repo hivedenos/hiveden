@@ -3,12 +3,17 @@ from typing import Dict, List, Optional
 from pydantic import BaseModel
 
 
+class EnvVar(BaseModel):
+    name: str
+    value: str
+
 class ContainerCreate(BaseModel):
     image: str
     name: str
     command: Optional[str] = None
     detach: bool = True
     network_name: Optional[str] = "hiveden-net"
+    env: Optional[List[EnvVar]] = None
 
 class NetworkCreate(BaseModel):
     name: str

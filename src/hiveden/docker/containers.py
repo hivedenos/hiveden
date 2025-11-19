@@ -7,7 +7,7 @@ from hiveden.docker.networks import create_network, network_exists
 client = docker.from_env()
 
 
-def create_container(image, command=None, network_name="hiveden-net", **kwargs):
+def create_container(image, command=None, network_name="hiveden-net", env=None, **kwargs):
     """Create a new Docker container and connect it to the hiveden network."""
     if not network_exists(network_name):
         create_network(network_name)
@@ -16,7 +16,12 @@ def create_container(image, command=None, network_name="hiveden-net", **kwargs):
     labels["managed-by"] = "hiveden"
     kwargs["labels"] = labels
 
-    container = client.containers.create(image, command, **kwargs)
+    environment = []
+    if env:
+        for item in env:
+            environment.append(f"{item.name}={item.value}")
+
+    container = client.containers.create(image, command, environment=environment, **kwargs)
     network = client.networks.get(network_name)
     network.connect(container)
     return container

@@ -9,3 +9,6 @@ docker:
     - name: my-container
       image: ubuntu:latest
       command: sleep infinity
+      env:
+        - name: MY_VAR
+          value: my_value
