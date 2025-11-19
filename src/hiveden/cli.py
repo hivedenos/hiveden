@@ -222,6 +222,81 @@ def delete_lxc_container(name):
         click.echo(f"Error: {e}", err=True)
 
 
+@main.group()
+def shares():
+    """Manage shares."""
+    pass
+
+@shares.group()
+def zfs():
+    """Manage ZFS shares."""
+    pass
+
+@zfs.command("list-pools")
+def list_zfs_pools():
+    """List ZFS pools."""
+    from hiveden.shares.zfs import ZFSManager
+    manager = ZFSManager()
+    pools = manager.list_pools()
+    for pool in pools:
+        click.echo(pool)
+
+@zfs.command("create-pool")
+@click.argument("name")
+@click.argument("devices", nargs=-1)
+def create_zfs_pool(name, devices):
+    """Create a ZFS pool."""
+    from hiveden.shares.zfs import ZFSManager
+    manager = ZFSManager()
+    manager.create_pool(name, list(devices))
+    click.echo(f"Pool '{name}' created.")
+
+@zfs.command("destroy-pool")
+@click.argument("name")
+def destroy_zfs_pool(name):
+    """Destroy a ZFS pool."""
+    from hiveden.shares.zfs import ZFSManager
+    manager = ZFSManager()
+    manager.destroy_pool(name)
+    click.echo(f"Pool '{name}' destroyed.")
+
+@zfs.command("list-datasets")
+@click.argument("pool")
+def list_zfs_datasets(pool):
+    """List ZFS datasets."""
+    from hiveden.shares.zfs import ZFSManager
+    manager = ZFSManager()
+    datasets = manager.list_datasets(pool)
+    for dataset in datasets:
+        click.echo(dataset)
+
+@zfs.command("create-dataset")
+@click.argument("name")
+def create_zfs_dataset(name):
+    """Create a ZFS dataset."""
+    from hiveden.shares.zfs import ZFSManager
+    manager = ZFSManager()
+    manager.create_dataset(name)
+    click.echo(f"Dataset '{name}' created.")
+
+@zfs.command("destroy-dataset")
+@click.argument("name")
+def destroy_zfs_dataset(name):
+    """Destroy a ZFS dataset."""
+    from hiveden.shares.zfs import ZFSManager
+    manager = ZFSManager()
+    manager.destroy_dataset(name)
+    click.echo(f"Dataset '{name}' destroyed.")
+
+@zfs.command("list-available-devices")
+def list_available_devices():
+    """List available devices for ZFS pools."""
+    from hiveden.hwosinfo.hw import get_available_devices
+    devices = get_available_devices()
+    for device in devices:
+        click.echo(device)
+
+
 @main.command()
 @click.option('--host', default='127.0.0.1', help='The host to bind to.')
 @click.option('--port', default=8000, help='The port to bind to.')

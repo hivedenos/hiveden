@@ -50,3 +50,20 @@ class LXCContainer(BaseModel):
 class LXCContainerCreate(BaseModel):
     name: str
     template: str = "ubuntu"
+
+
+class ZFSPool(BaseModel):
+    name: str
+
+
+class ZFSPoolCreate(BaseModel):
+    name: str
+    devices: List[str]
+
+
+class ZFSDataset(BaseModel):
+    name: str
+
+
+class ZFSDatasetCreate(BaseModel):
+    name: str

@@ -7,6 +7,8 @@ from hiveden.api.dtos import (
     LXCContainer,
     LXCContainerCreate,
     SuccessResponse,
+    ZFSDatasetCreate,
+    ZFSPoolCreate,
 )
 from hiveden.docker.actions import apply_configuration
 from hiveden.docker.models import (
@@ -180,6 +182,73 @@ def delete_lxc_container_endpoint(name: str):
     try:
         delete_container(name)
         return SuccessResponse(message=f"Container {name} deleted.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/shares/zfs/pools", response_model=DataResponse, tags=["Shares"])
+def list_zfs_pools_endpoint():
+    from hiveden.shares.zfs import ZFSManager
+    try:
+        manager = ZFSManager()
+        return DataResponse(data=manager.list_pools())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/shares/zfs/pools", response_model=SuccessResponse, tags=["Shares"])
+def create_zfs_pool_endpoint(pool: ZFSPoolCreate):
+    from hiveden.shares.zfs import ZFSManager
+    try:
+        manager = ZFSManager()
+        manager.create_pool(pool.name, pool.devices)
+        return SuccessResponse(message=f"Pool {pool.name} created.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/shares/zfs/pools/{name}", response_model=SuccessResponse, tags=["Shares"])
+def destroy_zfs_pool_endpoint(name: str):
+    from hiveden.shares.zfs import ZFSManager
+    try:
+        manager = ZFSManager()
+        manager.destroy_pool(name)
+        return SuccessResponse(message=f"Pool {name} destroyed.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/shares/zfs/datasets/{pool}", response_model=DataResponse, tags=["Shares"])
+def list_zfs_datasets_endpoint(pool: str):
+    from hiveden.shares.zfs import ZFSManager
+    try:
+        manager = ZFSManager()
+        return DataResponse(data=manager.list_datasets(pool))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/shares/zfs/datasets", response_model=SuccessResponse, tags=["Shares"])
+def create_zfs_dataset_endpoint(dataset: ZFSDatasetCreate):
+    from hiveden.shares.zfs import ZFSManager
+    try:
+        manager = ZFSManager()
+        manager.create_dataset(dataset.name)
+        return SuccessResponse(message=f"Dataset {dataset.name} created.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/shares/zfs/datasets/{name}", response_model=SuccessResponse, tags=["Shares"])
+def destroy_zfs_dataset_endpoint(name: str):
+    from hiveden.shares.zfs import ZFSManager
+    try:
+        manager = ZFSManager()
+        manager.destroy_dataset(name)
+        return SuccessResponse(message=f"Dataset {name} destroyed.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/shares/zfs/available-devices", response_model=DataResponse, tags=["Shares"])
+def list_available_devices_endpoint():
+    from hiveden.hwosinfo.hw import get_available_devices
+    try:
+        return DataResponse(data=get_available_devices())
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
