@@ -1,0 +1,11 @@
+Source: hiveden
+Section: python
+Priority: optional
+Maintainer: Ermal Guni <ermalguni@gmail.com>
+Build-Depends: debhelper-compat (= 13), python3-all, python3-setuptools, python3-wheel, python3-build
+Standards-Version: 4.5.0
+
+Package: hiveden
+Architecture: all
+Depends: ${python3:Depends}, ${misc:Depends}
+Description: A CLI tool and REST API for managing your personal server.

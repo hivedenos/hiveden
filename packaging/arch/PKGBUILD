@@ -1,0 +1,18 @@
+# Maintainer: Ermal Guni <ermalguni@gmail.com>
+pkgname=hiveden
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="A CLI tool and REST API for managing your personal server."
+arch=('x86_64')
+url="https://github.com/hiveden/hiveden"
+license=('MIT')
+depends=('python' 'python-pip')
+makedepends=('python-build' 'python-installer' 'python-wheel')
+source=("hiveden-$pkgver.tar.gz::https://github.com/hiveden/hiveden/archive/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+package() {
+  cd "$srcdir/hiveden-$pkgver"
+  python -m build --wheel --no-isolation
+  pip install --root="$pkgdir" --prefix=/usr dist/*.whl
+}

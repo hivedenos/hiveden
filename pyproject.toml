@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "hiveden"
 version = "0.0.1"
 authors = [
-  { name="Your Name", email="you@example.com" },
+  { name="Ermal Guni", email="ermalguni@gmail.com" },
 ]
 description = "A CLI tool and REST API for managing your personal server."
 readme = "README.md"
@@ -26,8 +26,8 @@ dependencies = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/pypa/sampleproject"
-"Bug Tracker" = "https://github.com/pypa/sampleproject/issues"
+"Homepage" = "https://github.com/hiveden/hiveden"
+"Bug Tracker" = "https://github.com/hiveden/hiveden/issues"
 
 [project.scripts]
 hiveden = "hiveden.cli:main"
