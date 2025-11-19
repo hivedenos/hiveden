@@ -3,16 +3,18 @@ from fastapi import Body, FastAPI, HTTPException
 
 from hiveden.api.dtos import (
     ConfigResponse,
-    Container,
-    ContainerCreate,
     DataResponse,
     LXCContainer,
     LXCContainerCreate,
-    Network,
-    NetworkCreate,
     SuccessResponse,
 )
 from hiveden.docker.actions import apply_configuration
+from hiveden.docker.models import (
+    Container,
+    ContainerCreate,
+    Network,
+    NetworkCreate,
+)
 
 app = FastAPI(
     title="Hiveden API",

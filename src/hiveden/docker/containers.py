@@ -1,7 +1,7 @@
 import docker
 from docker import errors
 
-from hiveden.api.dtos import DockerContainer
+from hiveden.docker.models import DockerContainer
 from hiveden.docker.networks import create_network, network_exists
 
 client = docker.from_env()
