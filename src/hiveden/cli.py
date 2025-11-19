@@ -4,6 +4,28 @@ import click
 import yaml
 
 
+class MutuallyExclusiveOption(click.Option):
+    def __init__(self, *args, **kwargs):
+        self.mutually_exclusive = set(kwargs.pop("mutually_exclusive", []))
+        help = kwargs.get("help", "")
+        if self.mutually_exclusive:
+            ex_str = ", ".join(self.mutually_exclusive)
+            kwargs["help"] = help + (
+                " NOTE: This option is mutually exclusive with "
+                " options: [%s]." % ex_str
+            )
+        super(MutuallyExclusiveOption, self).__init__(*args, **kwargs)
+
+    def handle_parse_result(self, ctx, opts, args):
+        if self.mutually_exclusive.intersection(opts) and self.name in opts:
+            raise click.UsageError(
+                "Illegal usage: `%s` is mutually exclusive with "
+                " `%s`." % (self.name, ", ".join(self.mutually_exclusive))
+            )
+
+        return super(MutuallyExclusiveOption, self).handle_parse_result(ctx, opts, args)
+
+
 @click.group()
 @click.pass_context
 def main(ctx):
@@ -31,6 +53,38 @@ def list_containers(ctx, only_managed):
     for container in containers:
         name = container.Names[0] if container.Names else "N/A"
         click.echo(f"{name} - {container.Image} - {container.Status}")
+
+
+@docker.command(name="describe-container")
+@click.option(
+    "--name",
+    "name",
+    cls=MutuallyExclusiveOption,
+    mutually_exclusive=["id"],
+    help="The name of the container.",
+)
+@click.option(
+    "--id",
+    "id",
+    cls=MutuallyExclusiveOption,
+    mutually_exclusive=["name"],
+    help="The ID of the container.",
+)
+def describe_container(name, id):
+    """Describe a docker container."""
+    from docker.errors import NotFound
+
+    from hiveden.docker.containers import describe_container as describe
+
+    if not name and not id:
+        raise click.UsageError("Either --name or --id must be provided.")
+
+    try:
+        container = describe(container_id=id, name=name)
+        for key, value in container:
+            click.echo(f"{key}: {value}")
+    except NotFound as e:
+        raise click.ClickException(e)
 
 
 @main.command()

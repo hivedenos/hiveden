@@ -106,3 +106,50 @@ def remove_container(container_id):
     container = get_container(container_id)
     container.remove()
     return container
+
+
+def describe_container(container_id=None, name=None):
+    """Describe a Docker container by its ID or name."""
+    search_by = ""
+    if not container_id and not name:
+        raise ValueError("Either container_id or name must be provided.")
+
+    if container_id:
+        search_by = container_id
+
+    if name and search_by == "":
+        search_by = name
+
+
+    container = None
+    try:
+        container = client.containers.get(search_by)
+    except errors.NotFound or errors.NullResource:
+        raise errors.NotFound(f"Container '{container_id or name}' not found.")
+
+    try:
+        image = container.image.tags[0] if container.image and container.image.tags else "N/A"
+        image_id = container.image.id or "N/A"
+    except errors.ImageNotFound:
+        image = "Not Found (404)"
+        image_id = "Not Found (404)"
+
+
+    return Container(
+        Id=container.id or "N/A",
+        Names=[container.name or "N/A"],
+        Image=image,
+        ImageID=image_id,
+        Command=(
+            " ".join(container.attrs.get("Config", {}).get("Cmd", []))
+            if container.attrs.get("Config", {}).get("Cmd")
+            else ""
+        ),
+        Created=container.attrs.get("Created", 0),
+        State=container.attrs.get("State", {}).get("Status", "N/A"),
+        Status=container.status,
+        Ports=container.attrs.get("NetworkSettings", {}).get("Ports", {}),
+        Labels=container.labels,
+        NetworkSettings=container.attrs.get("NetworkSettings", {}),
+        HostConfig=container.attrs.get("HostConfig", {}),
+    )
