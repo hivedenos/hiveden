@@ -38,8 +38,7 @@ def submit_config(config: str = Body(...)):
 def list_all_containers():
     from hiveden.docker.containers import list_containers
     try:
-        containers = [c.attrs for c in list_containers(all=True)]
-        return DataResponse(data=containers)
+        return DataResponse(data=list_containers(all=True))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

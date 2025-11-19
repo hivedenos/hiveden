@@ -40,7 +40,7 @@ def list_containers(ctx):
 
     containers = list_containers(all=True)
     for container in containers:
-        click.echo(f"{container.name} - {container.image.id} - {container.status}")
+        click.echo(f"{container.name} - {container.image} - {container.status}")
 
 
 @docker.command()

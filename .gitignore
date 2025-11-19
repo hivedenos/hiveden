@@ -33,3 +33,8 @@ go.work.sum
 
 .gemini/
 gha-creds-*.json
+
+# Python
+build/
+dist/
+*.egg-info/

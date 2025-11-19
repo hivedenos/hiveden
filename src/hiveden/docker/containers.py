@@ -1,5 +1,7 @@
 import docker
+from docker import errors
 
+from hiveden.api.dtos import DockerContainer
 from hiveden.docker.networks import create_network, network_exists
 
 client = docker.from_env()
@@ -9,6 +11,10 @@ def create_container(image, command=None, network_name="hiveden-net", **kwargs):
     """Create a new Docker container and connect it to the hiveden network."""
     if not network_exists(network_name):
         create_network(network_name)
+
+    labels = kwargs.get("labels", {})
+    labels["hiveden.managed"] = "true"
+    kwargs["labels"] = labels
 
     container = client.containers.create(image, command, **kwargs)
     network = client.networks.get(network_name)
@@ -23,7 +29,22 @@ def get_container(container_id):
 
 def list_containers(all=False, **kwargs):
     """List all Docker containers."""
-    return client.containers.list(all=all, **kwargs)
+    response_data = []
+    for c in client.containers.list(all=all, **kwargs):
+        try:
+            image = c.image.tags[0] if c.image and c.image.tags else "N/A"
+        except errors.ImageNotFound:
+            image = "Not Found (404)"
+        response_data.append(
+            DockerContainer(
+                name=c.name,
+                image=image,
+                status=c.status,
+                managed_by_hiveden="hiveden.managed" in c.labels and c.labels["hiveden.managed"] == "true",
+            )
+        )
+    return response_data
+
 
 
 def stop_container(container_id):

@@ -104,3 +104,10 @@ class LXCContainer(BaseModel):
 class LXCContainerCreate(BaseModel):
     name: str
     template: str = "ubuntu"
+
+
+class DockerContainer(BaseModel):
+    name: str
+    image: str
+    status: str
+    managed_by_hiveden: bool
