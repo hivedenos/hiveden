@@ -4,3 +4,4 @@ uvicorn
 docker
 PyYAML
 psutil
+lxc

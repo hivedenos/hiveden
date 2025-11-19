@@ -2,8 +2,13 @@ import yaml
 from fastapi import Body, FastAPI, HTTPException
 
 from hiveden.api.dtos import (
+    ConfigResponse,
+    Container,
     ContainerCreate,
     DataResponse,
+    LXCContainer,
+    LXCContainerCreate,
+    Network,
     NetworkCreate,
     SuccessResponse,
 )
@@ -123,7 +128,62 @@ def get_hw_info_endpoint():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.delete("/docker/networks/{network_id}", response_model=SuccessResponse, tags=["Docker"])
+@app.get("/lxc/containers", response_model=DataResponse, tags=["LXC"])
+def list_lxc_containers_endpoint():
+    from hiveden.lxc.containers import list_containers
+    try:
+        containers = [{"name": c.name, "state": c.state, "pid": c.init_pid, "ips": c.get_ips()} for c in list_containers()]
+        return DataResponse(data=containers)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/lxc/containers", response_model=DataResponse, tags=["LXC"])
+def create_lxc_container_endpoint(container: LXCContainerCreate):
+    from hiveden.lxc.containers import create_container
+    try:
+        c = create_container(**container.dict())
+        return DataResponse(data={"name": c.name, "state": c.state})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/lxc/containers/{name}", response_model=DataResponse, tags=["LXC"])
+def get_lxc_container_endpoint(name: str):
+    from hiveden.lxc.containers import get_container
+    try:
+        c = get_container(name)
+        return DataResponse(data={"name": c.name, "state": c.state, "pid": c.init_pid, "ips": c.get_ips()})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/lxc/containers/{name}/start", response_model=SuccessResponse, tags=["LXC"])
+def start_lxc_container_endpoint(name: str):
+    from hiveden.lxc.containers import start_container
+    try:
+        start_container(name)
+        return SuccessResponse(message=f"Container {name} started.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/lxc/containers/{name}/stop", response_model=SuccessResponse, tags=["LXC"])
+def stop_lxc_container_endpoint(name: str):
+    from hiveden.lxc.containers import stop_container
+    try:
+        stop_container(name)
+        return SuccessResponse(message=f"Container {name} stopped.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/lxc/containers/{name}", response_model=SuccessResponse, tags=["LXC"])
+def delete_lxc_container_endpoint(name: str):
+    from hiveden.lxc.containers import delete_container
+    try:
+        delete_container(name)
+        return SuccessResponse(message=f"Container {name} deleted.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/docker/networks/{network_id}", response_model=SuccessResponse)
 def remove_one_network(network_id: str):
     from hiveden.docker.networks import remove_network
     try:

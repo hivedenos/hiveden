@@ -23,6 +23,7 @@ dependencies = [
     "docker",
     "PyYAML",
     "psutil",
+    "lxc",
 ]
 
 [project.urls]

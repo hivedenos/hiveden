@@ -92,3 +92,15 @@ class HWInfo(BaseModel):
     memory: Dict
     disk: Dict
     network: Dict
+
+
+class LXCContainer(BaseModel):
+    name: str
+    state: str
+    pid: int
+    ips: List[str]
+
+
+class LXCContainerCreate(BaseModel):
+    name: str
+    template: str = "ubuntu"
