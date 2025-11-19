@@ -1,11 +1,19 @@
 import docker
 
+from hiveden.docker.networks import create_network, network_exists
+
 client = docker.from_env()
 
 
-def create_container(image, command=None, **kwargs):
-    """Create a new Docker container."""
-    return client.containers.create(image, command, **kwargs)
+def create_container(image, command=None, network_name="hiveden-net", **kwargs):
+    """Create a new Docker container and connect it to the hiveden network."""
+    if not network_exists(network_name):
+        create_network(network_name)
+
+    container = client.containers.create(image, command, **kwargs)
+    network = client.networks.get(network_name)
+    network.connect(container)
+    return container
 
 
 def get_container(container_id):

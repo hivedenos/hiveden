@@ -32,6 +32,43 @@ def list_containers(ctx):
 
 @docker.command()
 @click.pass_context
+def apply(ctx):
+    """Apply the docker configuration."""
+    from docker import errors
+
+    from hiveden.docker.containers import create_container, list_containers
+
+    config = ctx.obj["config"]["docker"]
+    network_name = config["network_name"]
+
+    # Create containers
+    for container_config in config["containers"]:
+        container_name = container_config["name"]
+        image = container_config["image"]
+        try:
+            containers = list_containers(all=True, filters={"name": container_name})
+            if not containers:
+                create_container(
+                    image=image,
+                    name=container_name,
+                    detach=True,
+                    network_name=network_name,
+                )
+                click.echo(
+                    f"Container '{container_name}' created and connected to '{network_name}'."
+                )
+            else:
+                click.echo(f"Container '{container_name}' already exists.")
+        except errors.ImageNotFound:
+            click.echo(
+                f"Image '{image}' not found for container '{container_name}'.", err=True
+            )
+        except errors.APIError as e:
+            click.echo(f"Error creating container '{container_name}': {e}", err=True)
+
+
+@docker.command()
+@click.pass_context
 def hello(ctx):
     """Prints the docker config."""
     click.echo(ctx.obj["config"]["docker"])

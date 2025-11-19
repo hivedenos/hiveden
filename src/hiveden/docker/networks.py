@@ -18,6 +18,12 @@ def list_networks(**kwargs):
     return client.networks.list(**kwargs)
 
 
+def network_exists(network_name):
+    """Check if a Docker network exists."""
+    networks = client.networks.list(names=[network_name])
+    return len(networks) > 0
+
+
 def remove_network(network_id):
     """Remove a Docker network."""
     network = get_network(network_id)
