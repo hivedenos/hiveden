@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Dict, List, Optional
 
 from pydantic import BaseModel
@@ -35,11 +36,11 @@ class Container(BaseModel):
     Image: str
     ImageID: str
     Command: str
-    Created: int
+    Created: datetime
     State: str
     Status: str
-    Ports: List[Dict]
-    Labels: Dict
+    Ports: dict
+    Labels: dict
     NetworkSettings: NetworkSettings
     HostConfig: HostConfig
 

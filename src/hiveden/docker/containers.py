@@ -2,6 +2,7 @@ import docker
 from docker import errors
 
 from hiveden.docker.images import image_exists, pull_image
+from hiveden.docker.models import Container
 from hiveden.docker.networks import create_network, network_exists
 
 client = docker.from_env()
@@ -59,7 +60,38 @@ def list_containers(all=False, only_managed=False, **kwargs):
     if only_managed:
         kwargs["filters"] = {"label": "managed-by=hiveden"}
 
-    return client.containers.list(all=all, **kwargs)
+    response_data = []
+    for c in client.containers.list(all=all, **kwargs):
+        try:
+            image = c.image.tags[0] if c.image and c.image.tags else "N/A"
+            image_id = c.image.id
+        except errors.ImageNotFound:
+            image = "Not Found (404)"
+            image_id = "Not Found (404)"
+
+        names = [c.name] if c.name else []
+
+        response_data.append(
+            Container(
+                Id=c.id,
+                Names=names,
+                Image=image,
+                ImageID=image_id,
+                Command=(
+                    " ".join(c.attrs.get("Config", {}).get("Cmd", []))
+                    if c.attrs.get("Config", {}).get("Cmd")
+                    else ""
+                ),
+                Created=c.attrs.get("Created", 0),
+                State=c.attrs.get("State", {}).get("Status", "N/A"),
+                Status=c.status,
+                Ports=c.attrs.get("NetworkSettings", {}).get("Ports", {}),
+                Labels=c.labels,
+                NetworkSettings=c.attrs.get("NetworkSettings", {}),
+                HostConfig=c.attrs.get("HostConfig", {}),
+            )
+        )
+    return response_data
 
 
 def stop_container(container_id):

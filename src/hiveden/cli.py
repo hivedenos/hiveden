@@ -29,7 +29,8 @@ def list_containers(ctx, only_managed):
 
     containers = list_containers(all=True, only_managed=only_managed)
     for container in containers:
-        click.echo(f"{container.name} - {container.image} - {container.status}")
+        name = container.Names[0] if container.Names else "N/A"
+        click.echo(f"{name} - {container.Image} - {container.Status}")
 
 
 @main.command()
