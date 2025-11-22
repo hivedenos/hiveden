@@ -1,6 +1,16 @@
+import json
+import subprocess
+
 import psutil
 
 from hiveden.shares.zfs import ZFSManager
+
+
+def get_disks():
+    """Return a list of disks and their partitions."""
+    output = subprocess.check_output(["lsblk", "-J", "-b"]).decode()
+    data = json.loads(output)
+    return data["blockdevices"]
 
 
 def get_hw_info():
@@ -39,10 +49,7 @@ def get_hw_info():
 def get_available_devices():
     """Return a list of devices available for ZFS pools."""
     all_devices = [p.device for p in psutil.disk_partitions()]
-    try:
-        manager = ZFSManager()
-        used_devices = manager.get_all_devices()
-    except ImportError:
-        used_devices = []
+    manager = ZFSManager()
+    used_devices = manager.get_all_devices()
 
     return [d for d in all_devices if d not in used_devices]

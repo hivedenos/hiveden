@@ -84,7 +84,7 @@ def describe_container(name, id):
         for key, value in container:
             click.echo(f"{key}: {value}")
     except NotFound as e:
-        raise click.ClickException(e)
+        raise click.ClickException(e.explanation or 'Strange Exception. Talk to the developers to maybe know more.')
 
 
 @docker.command(name="stop-container")
@@ -157,7 +157,7 @@ def stop_container(all_containers, managed, name):
 )
 def delete_container(all_containers, managed, name):
     """Delete docker containers."""
-    from hiveden.docker.containers import list_containers, delete_containers
+    from hiveden.docker.containers import delete_containers, list_containers
 
     if not all_containers and not managed and not name:
         raise click.UsageError(
@@ -407,6 +407,27 @@ def list_available_devices():
     devices = get_available_devices()
     for device in devices:
         click.echo(device)
+
+
+@main.group()
+@click.pass_context
+def system(ctx):
+    """System commands"""
+    pass
+
+@system.command(name='disks')
+@click.option('--all', 'show_all', is_flag=True, help='Show all disks.')
+@click.option('--free', 'show_free', is_flag=True, help='Show only free disks.')
+def get_system_disks(show_all, show_free):
+    """Show system disks."""
+    from hiveden.hwosinfo.hw import get_disks
+    disks = get_disks()
+
+    if show_free:
+        disks = [d for d in disks if d.get("fstype") is None and d.get("type") == 'disk']
+
+    for disk in disks:
+        click.echo(f"{disk['name']} - {disk.get('fstype', 'N/A')} - {disk['size']}")
 
 
 @main.command()
