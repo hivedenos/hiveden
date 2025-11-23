@@ -1,8 +1,5 @@
 from click.testing import CliRunner
-
-from src.hiveden.cli import main
-
-
+from hiveden.cli import main
 
 def test_main():
     runner = CliRunner()
