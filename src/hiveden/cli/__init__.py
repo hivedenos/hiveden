@@ -8,6 +8,7 @@ from hiveden.cli.pkgs import pkgs
 from hiveden.cli.info import info
 from hiveden.cli.shares import shares
 from hiveden.cli.system import system
+from hiveden.cli.apps_cli import apps
 
 @click.group()
 @click.pass_context
@@ -21,6 +22,7 @@ main.add_command(pkgs)
 main.add_command(info)
 main.add_command(shares)
 main.add_command(system)
+main.add_command(apps)
 
 @main.command()
 @click.option("--config", help="Path to the configuration file.")

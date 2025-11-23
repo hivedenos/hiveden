@@ -24,6 +24,7 @@ dependencies = [
     "PyYAML",
     "psutil",
     "lxc",
+    "pihole6api",
 ]
 
 [project.urls]

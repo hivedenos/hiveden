@@ -5,3 +5,4 @@ docker
 PyYAML
 psutil
 lxc
+pihole6api
