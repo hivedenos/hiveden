@@ -1,6 +1,6 @@
 from docker import errors
 
-from hiveden.docker.containers import create_container, list_containers
+from hiveden.docker.containers import DockerManager
 from hiveden.docker.models import DockerContainer
 from hiveden.docker.networks import create_network, list_networks
 
@@ -9,6 +9,8 @@ def apply_configuration(config):
     """Apply the docker configuration."""
     messages = []
     network_name = config["network_name"]
+    
+    manager = DockerManager(network_name=network_name)
 
     # Create network
     try:
@@ -25,7 +27,7 @@ def apply_configuration(config):
     for container_config in config["containers"]:
         container = DockerContainer(**container_config)
         try:
-            create_container(
+            manager.create_container(
                 image=container.image,
                 name=container.name,
                 command=container.command,

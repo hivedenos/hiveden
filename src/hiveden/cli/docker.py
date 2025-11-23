@@ -1,5 +1,31 @@
 import click
+import os
+import yaml
 from hiveden.cli.utils import MutuallyExclusiveOption
+
+def get_docker_manager():
+    from hiveden.docker.containers import DockerManager
+    
+    network_name = "hiveden-network"
+    
+    # Try to load config
+    config_path = "config.yaml"
+    if os.path.exists(os.path.expanduser("~/.config/hiveden/config.yaml")):
+        config_path = os.path.expanduser("~/.config/hiveden/config.yaml")
+    elif os.path.exists("/etc/hiveden/config.yaml"):
+        config_path = "/etc/hiveden/config.yaml"
+        
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r") as f:
+                config = yaml.safe_load(f)
+                if config and "docker" in config and "network_name" in config["docker"]:
+                    network_name = config["docker"]["network_name"]
+        except Exception:
+            pass # Fallback to default
+            
+    return DockerManager(network_name=network_name)
+
 
 @click.group()
 @click.pass_context
@@ -15,9 +41,9 @@ def docker(ctx):
 @click.pass_context
 def list_containers(ctx, only_managed):
     """List all docker containers."""
-    from hiveden.docker.containers import list_containers
+    manager = get_docker_manager()
 
-    containers = list_containers(all=True, only_managed=only_managed)
+    containers = manager.list_containers(all=True, only_managed=only_managed)
     for container in containers:
         name = container.Names[0] if container.Names else "N/A"
         click.echo(f"{name} - {container.Image} - {container.Status}")
@@ -42,13 +68,13 @@ def describe_container(name, id):
     """Describe a docker container."""
     from docker.errors import NotFound
 
-    from hiveden.docker.containers import describe_container as describe
+    manager = get_docker_manager()
 
     if not name and not id:
         raise click.UsageError("Either --name or --id must be provided.")
 
     try:
-        container = describe(container_id=id, name=name)
+        container = manager.describe_container(container_id=id, name=name)
         for key, value in container:
             click.echo(f"{key}: {value}")
     except NotFound as e:
@@ -79,7 +105,7 @@ def describe_container(name, id):
 )
 def stop_container(all_containers, managed, name):
     """Stop docker containers."""
-    from hiveden.docker.containers import list_containers, stop_containers
+    manager = get_docker_manager()
 
     if not all_containers and not managed and not name:
         raise click.UsageError(
@@ -88,17 +114,17 @@ def stop_container(all_containers, managed, name):
 
     containers_to_stop = []
     if all_containers:
-        containers_to_stop = list_containers(all=True)
+        containers_to_stop = manager.list_containers(all=True)
     elif managed:
-        containers_to_stop = list_containers(only_managed=True)
+        containers_to_stop = manager.list_containers(only_managed=True)
     elif name:
-        containers_to_stop = list_containers(names=[name])
+        containers_to_stop = manager.list_containers(names=[name])
 
     if not containers_to_stop:
         click.echo("No containers found to stop.")
         return
 
-    stop_containers(containers_to_stop)
+    manager.stop_containers(containers_to_stop)
 
 
 @docker.command(name="delete-container")
@@ -125,7 +151,7 @@ def stop_container(all_containers, managed, name):
 )
 def delete_container(all_containers, managed, name):
     """Delete docker containers."""
-    from hiveden.docker.containers import delete_containers, list_containers
+    manager = get_docker_manager()
 
     if not all_containers and not managed and not name:
         raise click.UsageError(
@@ -134,14 +160,14 @@ def delete_container(all_containers, managed, name):
 
     containers_to_delete = []
     if all_containers:
-        containers_to_delete = list_containers(all=True)
+        containers_to_delete = manager.list_containers(all=True)
     elif managed:
-        containers_to_delete = list_containers(only_managed=True)
+        containers_to_delete = manager.list_containers(only_managed=True)
     elif name:
-        containers_to_delete = list_containers(names=[name])
+        containers_to_delete = manager.list_containers(names=[name])
 
     if not containers_to_delete:
         click.echo("No containers found to delete.")
         return
 
-    delete_containers(containers_to_delete)
+    manager.delete_containers(containers_to_delete)

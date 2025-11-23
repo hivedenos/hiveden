@@ -4,13 +4,47 @@ except ImportError:
     PiHole6Client = None
 
 class PiHoleManager:
-    def __init__(self, host, password):
+    def __init__(self, host, password, local_domain="hiveden.local"):
         if PiHole6Client is None:
             raise ImportError("pihole6api is not installed. Please install it to use Pi-hole features.")
         # Ensure host starts with http/https
         if not host.startswith("http"):
             host = f"http://{host}"
         self.client = PiHole6Client(host, password)
+        self.local_domain = local_domain
+
+    def sync_docker_dns(self):
+        """Sync Docker container IPs to Pi-hole DNS."""
+        from hiveden.docker.containers import DockerManager
+        
+        manager = DockerManager()
+        containers = manager.list_containers(all=False, only_managed=True) 
+        for container in containers:
+            if not container.IPAddress:
+                continue
+            
+            ip_address = container.IPAddress
+                
+            # Process name
+            # Use the first name from Names list (usually starts with /)
+            raw_name = container.Names[0].lstrip('_')
+            
+            # Remove 'hiveden' (case-insensitive)
+            name = raw_name.lower().replace('hiveden', '')
+            
+            # Trim '_' and '-' and replace '_' with '-'
+            name = name.strip('_-').replace('_', '-')
+            
+            if not name:
+                continue
+                
+            domain = f"{name}.{self.local_domain}"
+            
+            try:
+                print(f"Adding DNS entry: {domain} -> {ip_address}")
+                self.add_dns_entry(domain, ip_address)
+            except Exception as e:
+                print(f"Failed to add DNS entry for {domain}: {e}")
 
     def list_dns_entries(self):
         """List custom DNS entries."""

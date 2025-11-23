@@ -52,6 +52,7 @@ class Container(BaseModel):
     Labels: dict
     NetworkSettings: NetworkSettings
     HostConfig: HostConfig
+    IPAddress: Optional[str] = None
 
 class Network(BaseModel):
     Name: str

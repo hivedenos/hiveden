@@ -24,7 +24,9 @@ def get_pihole_config():
     if 'host' not in pihole_conf or 'password' not in pihole_conf:
          raise click.UsageError("Pi-hole host or password missing in config.")
          
-    return pihole_conf['host'], pihole_conf['password']
+    docker_network = config.get('docker', {}).get('network_name', 'hiveden-network')
+         
+    return pihole_conf['host'], pihole_conf['password'], docker_network
 
 
 @click.group()
@@ -45,8 +47,8 @@ def dns_entries():
 @dns_entries.command(name='list')
 def list_dns():
     """List DNS entries."""
-    host, password = get_pihole_config()
-    mgr = PiHoleManager(host, password)
+    host, password, network = get_pihole_config()
+    mgr = PiHoleManager(host, password, docker_network_name=network)
     entries = mgr.list_dns_entries()
     for entry in entries:
         click.echo(f"{entry['domain']} -> {entry['ip']}")
@@ -56,8 +58,8 @@ def list_dns():
 @click.argument('ip')
 def add_dns(domain, ip):
     """Add DNS entry."""
-    host, password = get_pihole_config()
-    mgr = PiHoleManager(host, password)
+    host, password, network = get_pihole_config()
+    mgr = PiHoleManager(host, password, docker_network_name=network)
     mgr.add_dns_entry(domain, ip)
     click.echo(f"Added {domain} -> {ip}")
 
@@ -66,8 +68,8 @@ def add_dns(domain, ip):
 @click.argument('ip')
 def delete_dns(domain, ip):
     """Delete DNS entry."""
-    host, password = get_pihole_config()
-    mgr = PiHoleManager(host, password)
+    host, password, network = get_pihole_config()
+    mgr = PiHoleManager(host, password, docker_network_name=network)
     mgr.delete_dns_entry(domain, ip)
     click.echo(f"Deleted {domain} -> {ip}")
 
@@ -80,8 +82,8 @@ def block():
 @block.command(name='list')
 def list_block():
     """List blocked domains."""
-    host, password = get_pihole_config()
-    mgr = PiHoleManager(host, password)
+    host, password, network = get_pihole_config()
+    mgr = PiHoleManager(host, password, docker_network_name=network)
     domains = mgr.list_blacklist()
     for d in domains:
         click.echo(d['domain'])
@@ -90,8 +92,8 @@ def list_block():
 @click.argument('domain')
 def add_block(domain):
     """Block a domain."""
-    host, password = get_pihole_config()
-    mgr = PiHoleManager(host, password)
+    host, password, network = get_pihole_config()
+    mgr = PiHoleManager(host, password, docker_network_name=network)
     mgr.add_to_blacklist(domain)
     click.echo(f"Blocked {domain}")
 
@@ -99,8 +101,8 @@ def add_block(domain):
 @click.argument('domain')
 def remove_block(domain):
     """Unblock a domain."""
-    host, password = get_pihole_config()
-    mgr = PiHoleManager(host, password)
+    host, password, network = get_pihole_config()
+    mgr = PiHoleManager(host, password, docker_network_name=network)
     mgr.remove_from_blacklist(domain)
     click.echo(f"Unblocked {domain}")
 
@@ -113,8 +115,8 @@ def whitelist():
 @whitelist.command(name='list')
 def list_whitelist():
     """List whitelisted domains."""
-    host, password = get_pihole_config()
-    mgr = PiHoleManager(host, password)
+    host, password, network = get_pihole_config()
+    mgr = PiHoleManager(host, password, docker_network_name=network)
     domains = mgr.list_whitelist()
     for d in domains:
         click.echo(d['domain'])
@@ -123,8 +125,8 @@ def list_whitelist():
 @click.argument('domain')
 def add_whitelist(domain):
     """Whitelist a domain."""
-    host, password = get_pihole_config()
-    mgr = PiHoleManager(host, password)
+    host, password, network = get_pihole_config()
+    mgr = PiHoleManager(host, password, docker_network_name=network)
     mgr.add_to_whitelist(domain)
     click.echo(f"Whitelisted {domain}")
 
@@ -132,7 +134,7 @@ def add_whitelist(domain):
 @click.argument('domain')
 def remove_whitelist(domain):
     """Remove from whitelist."""
-    host, password = get_pihole_config()
-    mgr = PiHoleManager(host, password)
+    host, password, network = get_pihole_config()
+    mgr = PiHoleManager(host, password, docker_network_name=network)
     mgr.remove_from_whitelist(domain)
     click.echo(f"Removed {domain} from whitelist")
