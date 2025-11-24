@@ -67,3 +67,21 @@ class ZFSDataset(BaseModel):
 
 class ZFSDatasetCreate(BaseModel):
     name: str
+
+
+class SMBShare(BaseModel):
+    name: str
+    path: str
+    comment: Optional[str] = None
+    read_only: bool = False
+    browsable: bool = True
+    guest_ok: bool = False
+
+
+class SMBShareCreate(BaseModel):
+    name: str
+    path: str
+    comment: Optional[str] = ""
+    read_only: bool = False
+    browsable: bool = True
+    guest_ok: bool = False

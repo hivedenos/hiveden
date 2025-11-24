@@ -69,3 +69,41 @@ def list_available_devices_endpoint():
         return DataResponse(data=get_available_devices())
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+from hiveden.api.dtos import SMBShareCreate
+
+@router.get("/smb", response_model=DataResponse)
+def list_smb_shares_endpoint():
+    from hiveden.shares.smb import SMBManager
+    try:
+        manager = SMBManager()
+        return DataResponse(data=manager.list_shares())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/smb", response_model=SuccessResponse)
+def create_smb_share_endpoint(share: SMBShareCreate):
+    from hiveden.shares.smb import SMBManager
+    try:
+        manager = SMBManager()
+        manager.create_share(
+            name=share.name,
+            path=share.path,
+            comment=share.comment,
+            readonly=share.read_only,
+            browsable=share.browsable,
+            guest_ok=share.guest_ok
+        )
+        return SuccessResponse(message=f"Share {share.name} created.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/smb/{name}", response_model=SuccessResponse)
+def destroy_smb_share_endpoint(name: str):
+    from hiveden.shares.smb import SMBManager
+    try:
+        manager = SMBManager()
+        manager.delete_share(name)
+        return SuccessResponse(message=f"Share {name} deleted.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

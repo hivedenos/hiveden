@@ -118,9 +118,39 @@ class DockerManager:
 
         return container
 
-    def get_container(self, container_id):
+    def get_container(self, container_id) -> Container:
         """Get a Docker container by its ID."""
-        return self.client.containers.get(container_id)
+        c = self.client.containers.get(container_id)
+        
+        try:
+            image = c.image.tags[0] if c.image and c.image.tags else "N/A"
+            image_id = c.image.id
+        except errors.ImageNotFound:
+            image = "Not Found (404)"
+            image_id = "Not Found (404)"
+        
+        names = [c.name] if c.name else []
+        ip_address = self.extract_ip(c.attrs)
+
+        return Container(
+            Id=c.id,
+            Names=names,
+            Image=image,
+            ImageID=image_id,
+            Command=(
+                " ".join(c.attrs.get("Config", {}).get("Cmd", []))
+                if c.attrs.get("Config", {}).get("Cmd")
+                else ""
+            ),
+            Created=c.attrs.get("Created", 0),
+            State=c.attrs.get("State", {}).get("Status", "N/A"),
+            Status=c.status,
+            Ports=c.attrs.get("NetworkSettings", {}).get("Ports", {}),
+            Labels=c.labels,
+            NetworkSettings=c.attrs.get("NetworkSettings", {}),
+            HostConfig=c.attrs.get("HostConfig", {}),
+            IPAddress=ip_address,
+        )
 
     def list_containers(self, all=False, only_managed=False, names=None, **kwargs) -> list[Container]:
         """List all Docker containers."""

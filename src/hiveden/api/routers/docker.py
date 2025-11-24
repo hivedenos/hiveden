@@ -29,7 +29,7 @@ def create_new_container(container: ContainerCreate):
 def get_one_container(container_id: str):
     from hiveden.docker.containers import get_container
     try:
-        return DataResponse(data=get_container(container_id).attrs)
+        return DataResponse(data=get_container(container_id))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
