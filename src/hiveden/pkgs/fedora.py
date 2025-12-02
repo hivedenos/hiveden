@@ -26,3 +26,11 @@ class FedoraPackageManager(PackageManager):
     def search(self, package):
         result = subprocess.run([self.pm, "search", package], capture_output=True, text=True)
         return result.stdout.strip().split('\n')
+
+    def get_install_command(self, package: str) -> str:
+        return f"{self.pm} install -y {package}"
+
+    def get_check_installed_command(self, package: str) -> str:
+        return f"{self.pm} list installed {package}"
+
+

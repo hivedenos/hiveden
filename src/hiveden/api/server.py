@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from hiveden.api.routers import config, docker, info, lxc, shares
+from hiveden.api.routers import config, docker, info, lxc, shares, shell
 
 app = FastAPI(
     title="Hiveden API",
@@ -23,3 +23,4 @@ app.include_router(docker.router)
 app.include_router(info.router)
 app.include_router(lxc.router)
 app.include_router(shares.router)
+app.include_router(shell.router)

@@ -26,6 +26,8 @@ dependencies = [
     "lxc",
     "pihole6api",
     "psycopg2-binary",
+    "paramiko",
+    "websockets",
 ]
 
 [project.urls]

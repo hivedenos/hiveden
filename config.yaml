@@ -1,0 +1,16 @@
+docker:
+  network_name: hiveden-net
+  containers:
+    - name: postgres_hive
+      image: postgres:latest
+      env:
+        - name: POSTGRES_PASSWORD
+          value: "postgres"
+      ports:
+        - host_port: 55432
+          container_port: 5432
+
+apps:
+  pihole:
+    host: "http://pihole-ip"
+    password: "password"

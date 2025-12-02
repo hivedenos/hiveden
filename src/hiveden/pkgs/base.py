@@ -17,3 +17,13 @@ class PackageManager(ABC):
     @abstractmethod
     def search(self, package):
         pass
+
+    @abstractmethod
+    def get_install_command(self, package: str) -> str:
+        pass
+
+    @abstractmethod
+    def get_check_installed_command(self, package: str) -> str:
+        pass
+
+
