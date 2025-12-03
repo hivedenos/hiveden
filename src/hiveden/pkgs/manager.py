@@ -3,7 +3,7 @@ from hiveden.hwosinfo.os import get_os_info
 from hiveden.pkgs.arch import ArchPackageManager
 from hiveden.pkgs.debian import DebianPackageManager
 from hiveden.pkgs.fedora import FedoraPackageManager
-from hiveden.pkgs.models import PackageStatus
+from hiveden.pkgs.models import PackageStatus, RequiredPackage, PackageOperation
 
 
 def get_package_manager():
@@ -22,6 +22,33 @@ def get_package_manager():
 def get_system_required_packages() -> List[PackageStatus]:
     pm = get_package_manager()
     packages = pm.get_required_packages()
+    
+    # Add storage related packages
+    storage_packages = [
+        RequiredPackage(
+            name="mdadm",
+            title="MDADM",
+            description="Tool for managing Linux Software RAID arrays",
+            operation=PackageOperation.INSTALL
+        ),
+        RequiredPackage(
+            name="btrfs-progs",
+            title="BTRFS Programs",
+            description="Utilities for managing BTRFS filesystems",
+            operation=PackageOperation.INSTALL
+        ),
+        RequiredPackage(
+            name="parted",
+            title="GNU Parted",
+            description="Disk partitioning and partition resizing program",
+            operation=PackageOperation.INSTALL
+        ),
+    ]
+    
+    # Combine lists
+    all_required = packages + storage_packages
+    
+    # Check status for all
     return [
         PackageStatus(
             name=pkg.name,
@@ -30,5 +57,5 @@ def get_system_required_packages() -> List[PackageStatus]:
             operation=pkg.operation,
             installed=pm.is_installed(pkg.name)
         )
-        for pkg in packages
+        for pkg in all_required
     ]

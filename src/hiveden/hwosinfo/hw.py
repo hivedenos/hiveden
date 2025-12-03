@@ -3,12 +3,14 @@ import subprocess
 
 import psutil
 
-from hiveden.shares.zfs import ZFSManager
-
 
 def get_disks():
-    """Return a list of disks and their partitions."""
-    output = subprocess.check_output(["lsblk", "-J", "-b"]).decode()
+    """Return a list of disks and their partitions with detailed info."""
+    # -J: JSON output
+    # -b: Bytes
+    # -o: Specific columns
+    cmd = ["lsblk", "-J", "-b", "-o", "NAME,PATH,SIZE,MODEL,SERIAL,ROTA,TYPE,FSTYPE,UUID,MOUNTPOINT,PKNAME"]
+    output = subprocess.check_output(cmd).decode()
     data = json.loads(output)
     return data["blockdevices"]
 
@@ -44,12 +46,3 @@ def get_hw_info():
         }
     }
     return info
-
-
-def get_available_devices():
-    """Return a list of devices available for ZFS pools."""
-    all_devices = [p.device for p in psutil.disk_partitions()]
-    manager = ZFSManager()
-    used_devices = manager.get_all_devices()
-
-    return [d for d in all_devices if d not in used_devices]
