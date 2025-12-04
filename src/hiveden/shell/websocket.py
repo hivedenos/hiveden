@@ -4,6 +4,7 @@ import json
 import asyncio
 from typing import Optional
 from fastapi import WebSocket, WebSocketDisconnect
+from fastapi.encoders import jsonable_encoder
 import logging
 
 from hiveden.shell.manager import ShellManager
@@ -64,8 +65,13 @@ class ShellWebSocketHandler:
             # Send session info
             await websocket.send_json({
                 "type": "session_info",
-                "data": session.dict()
+                "data": jsonable_encoder(session.dict())
             })
+            
+            # Send initial prompt
+            await self._send_prompt(websocket, session_id)
+            
+            command_buffer = ""
             
             # Handle incoming messages
             while True:
@@ -78,6 +84,56 @@ class ShellWebSocketHandler:
                         # Execute command and stream output
                         command = data.get("command", "")
                         await self._execute_and_stream(websocket, session_id, command)
+                        await self._send_prompt(websocket, session_id)
+
+                    elif message_type == "input":
+                        # Handle interactive input (xterm.js style)
+                        # content usually comes in 'data' or 'input' field
+                        content = data.get("data") or data.get("input") or ""
+                        
+                        # Echo input back to client so they see what they type
+                        # (Local echo is often disabled in term libraries connected to WS)
+                        await websocket.send_json({
+                            "type": "output",
+                            "data": {
+                                "session_id": session_id,
+                                "output": content,
+                                "error": False
+                            }
+                        })
+                        
+                        command_buffer += content
+                        
+                        # Check for Enter key (Carriage Return)
+                        if "\r" in content:
+                            # Extract command (remove newlines)
+                            cmd = command_buffer.strip()
+                            command_buffer = ""
+                            
+                            # If we have a command, execute it
+                            if cmd:
+                                # Add a newline before execution output to look clean
+                                await websocket.send_json({
+                                    "type": "output",
+                                    "data": {
+                                        "session_id": session_id,
+                                        "output": "\n",
+                                        "error": False
+                                    }
+                                })
+                                await self._execute_and_stream(websocket, session_id, cmd)
+                                await self._send_prompt(websocket, session_id)
+                            else:
+                                # Just enter pressed (empty command), show prompt again
+                                await websocket.send_json({
+                                    "type": "output",
+                                    "data": {
+                                        "session_id": session_id,
+                                        "output": "\n",
+                                        "error": False
+                                    }
+                                })
+                                await self._send_prompt(websocket, session_id)
                     
                     elif message_type == "ping":
                         # Respond to ping
@@ -135,7 +191,7 @@ class ShellWebSocketHandler:
             async for output in self.shell_manager.execute_command_stream(session_id, command):
                 await websocket.send_json({
                     "type": "output",
-                    "data": output.dict()
+                    "data": jsonable_encoder(output.dict())
                 })
             
             # Send command completion
@@ -173,7 +229,7 @@ class ShellWebSocketHandler:
             async for output in self.shell_manager.install_package_stream(package_name, package_manager):
                 await websocket.send_json({
                     "type": "output",
-                    "data": output.dict()
+                    "data": jsonable_encoder(output.dict())
                 })
             
             # Send installation completed
@@ -191,3 +247,18 @@ class ShellWebSocketHandler:
         
         finally:
             await websocket.close()
+
+    async def _send_prompt(self, websocket: WebSocket, session_id: str):
+        """Send a shell prompt to the client."""
+        session = self.shell_manager.get_session(session_id)
+        if session:
+            prompt_suffix = "# " if session.user == "root" else "$ "
+            prompt = f"{session.user}@{session.target}:{session.working_dir}{prompt_suffix}"
+            await websocket.send_json({
+                "type": "output",
+                "data": {
+                    "session_id": session_id,
+                    "output": prompt,
+                    "error": False
+                }
+            })
