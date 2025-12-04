@@ -1,9 +1,20 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from typing import Optional
 
 from hiveden.api.dtos import DataResponse, SuccessResponse
-from hiveden.docker.models import DockerContainer as ContainerCreate, NetworkCreate
+from hiveden.docker.models import DBContainerCreate as ContainerCreate, NetworkCreate
+from hiveden.db.manager import DatabaseManager
+from hiveden.db.repositories.templates import ContainerRepository, ContainerAttributeRepository
+import os
+import json
+
+# Helper to get DB manager (in a real app, use dependency injection properly)
+def get_db_manager():
+    # Assuming DB URL is in environment or config
+    # For now, defaulting to local sqlite for dev
+    db_path = os.path.join(os.getcwd(), "hiveden.db")
+    return DatabaseManager(f"sqlite:///{db_path}")
 
 router = APIRouter(prefix="/docker", tags=["Docker"])
 
@@ -20,10 +31,66 @@ def list_all_containers():
 @router.post("/containers", response_model=DataResponse)
 def create_new_container(container: ContainerCreate):
     from hiveden.docker.containers import create_container
+    
+    db_manager = get_db_manager()
+    container_repo = ContainerRepository(db_manager)
+    attr_repo = ContainerAttributeRepository(db_manager)
+    
     try:
-        c = create_container(**container.dict())
-        return DataResponse(data=c.attrs)
+        # 1. Store in Database
+        # Create main container record
+        new_container_record = container_repo.create({
+            "name": container.name,
+            "type": container.type,
+            "is_container": container.is_container,
+            "enabled": container.enabled
+        })
+        
+        if not new_container_record:
+            raise Exception("Failed to create container record in database")
+            
+        # Store attributes (image, command, ports, etc.)
+        # We serialize complex objects to JSON strings for storage
+        attributes = {
+            "image": container.image,
+            "command": container.command,
+            "env": json.dumps([e.dict() for e in container.env]) if container.env else None,
+            "ports": json.dumps([p.dict() for p in container.ports]) if container.ports else None,
+            "mounts": json.dumps([m.dict() for m in container.mounts]) if container.mounts else None,
+            "labels": json.dumps(container.labels) if container.labels else None
+        }
+        
+        for key, value in attributes.items():
+            if value:
+                attr_repo.create({
+                    "container_id": new_container_record.id,
+                    "name": key,
+                    "value": value
+                })
+
+        # 2. Create and Start in Docker (if it's meant to be a running container)
+        docker_response = None
+        if container.is_container:
+            # Convert DB model back to Docker args format
+            # We use the original request object 'container' as it has the right structure
+            c = create_container(
+                name=container.name,
+                image=container.image,
+                command=container.command,
+                env=container.env,
+                ports=container.ports,
+                mounts=container.mounts,
+                labels=container.labels
+            )
+            docker_response = c.attrs
+
+        return DataResponse(data={
+            "db_record": new_container_record.dict(),
+            "docker_attrs": docker_response
+        })
     except Exception as e:
+        # TODO: Rollback DB transaction if Docker creation fails?
+        # For now, we raise 500
         raise HTTPException(status_code=500, detail=str(e))
 
 

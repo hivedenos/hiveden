@@ -29,6 +29,11 @@ class DockerContainer(BaseModel):
     mounts: Optional[List[Mount]] = None
     labels: Optional[Dict[str, str]] = None
 
+class DBContainerCreate(DockerContainer):
+    is_container: bool = True
+    enabled: bool = True
+    type: str = "docker"
+
 class NetworkCreate(BaseModel):
     name: str
 

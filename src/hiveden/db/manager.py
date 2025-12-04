@@ -39,8 +39,8 @@ class DatabaseManager:
         
         drop_script = """
         DROP TABLE IF EXISTS logs;
-        DROP TABLE IF EXISTS container_templates_attributes;
-        DROP TABLE IF EXISTS container_templates;
+        DROP TABLE IF EXISTS container_attributes;
+        DROP TABLE IF EXISTS containers;
         DROP TABLE IF EXISTS configs;
         DROP TABLE IF EXISTS modules;
         """
@@ -64,25 +64,26 @@ class DatabaseManager:
             FOREIGN KEY(module_id) REFERENCES modules(id) ON DELETE CASCADE
         );
 
-        CREATE TABLE container_templates (
+        CREATE TABLE containers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             type TEXT NOT NULL CHECK(type IN ('docker', 'lxc')),
+            is_container BOOLEAN DEFAULT 0,
             enabled BOOLEAN DEFAULT 1,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             deleted_at TIMESTAMP
         );
 
-        CREATE TABLE container_templates_attributes (
+        CREATE TABLE container_attributes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            container_template_id INTEGER NOT NULL,
+            container_id INTEGER NOT NULL,
             name TEXT NOT NULL,
             value TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             deleted_at TIMESTAMP,
-            FOREIGN KEY(container_template_id) REFERENCES container_templates(id) ON DELETE CASCADE
+            FOREIGN KEY(container_id) REFERENCES containers(id) ON DELETE CASCADE
         );
 
         CREATE TABLE logs (
@@ -113,25 +114,26 @@ class DatabaseManager:
             FOREIGN KEY(module_id) REFERENCES modules(id) ON DELETE CASCADE
         );
 
-        CREATE TABLE container_templates (
+        CREATE TABLE containers (
             id SERIAL PRIMARY KEY,
             name TEXT NOT NULL,
             type TEXT NOT NULL CHECK(type IN ('docker', 'lxc')),
+            is_container BOOLEAN DEFAULT FALSE,
             enabled BOOLEAN DEFAULT TRUE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             deleted_at TIMESTAMP
         );
 
-        CREATE TABLE container_templates_attributes (
+        CREATE TABLE container_attributes (
             id SERIAL PRIMARY KEY,
-            container_template_id INTEGER NOT NULL,
+            container_id INTEGER NOT NULL,
             name TEXT NOT NULL,
             value TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             deleted_at TIMESTAMP,
-            FOREIGN KEY(container_template_id) REFERENCES container_templates(id) ON DELETE CASCADE
+            FOREIGN KEY(container_id) REFERENCES containers(id) ON DELETE CASCADE
         );
 
         CREATE TABLE logs (
