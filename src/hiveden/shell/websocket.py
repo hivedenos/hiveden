@@ -9,6 +9,7 @@ import logging
 
 from hiveden.shell.manager import ShellManager
 from hiveden.shell.models import ShellCommand, ShellSessionCreate
+from hiveden.jobs.manager import JobManager
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,7 @@ class ShellWebSocketHandler:
     def __init__(self, shell_manager: ShellManager):
         self.shell_manager = shell_manager
         self.active_connections: dict[str, WebSocket] = {}
+        self.job_manager = JobManager()
 
     async def connect(self, websocket: WebSocket, session_id: Optional[str] = None):
         """Accept WebSocket connection.
@@ -41,6 +43,62 @@ class ShellWebSocketHandler:
         if session_id in self.active_connections:
             del self.active_connections[session_id]
             logger.info(f"WebSocket disconnected for session {session_id}")
+
+    async def handle_job_monitoring(self, websocket: WebSocket, job_id: str):
+        """Handle WebSocket for job monitoring.
+        
+        Args:
+            websocket: WebSocket connection
+            job_id: Job ID to monitor
+        """
+        await websocket.accept()
+        logger.info(f"WebSocket connected for job {job_id}")
+        
+        try:
+            # Send initial job info if needed
+            job = self.job_manager.get_job(job_id)
+            if not job:
+                await websocket.send_json({
+                    "type": "error",
+                    "message": f"Job {job_id} not found"
+                })
+                await websocket.close()
+                return
+
+            await websocket.send_json({
+                "type": "job_info",
+                "data": jsonable_encoder(job.dict(exclude={'logs'}))
+            })
+
+            # Subscribe to job logs
+            async for log in self.job_manager.subscribe(job_id):
+                await websocket.send_json({
+                    "type": "log",
+                    "data": jsonable_encoder(log)
+                })
+                
+            # Send completion message
+            # Refresh job status to get final state
+            job = self.job_manager.get_job(job_id)
+            await websocket.send_json({
+                "type": "job_completed",
+                "data": jsonable_encoder(job.dict(exclude={'logs'}))
+            })
+            
+        except Exception as e:
+            logger.error(f"Error monitoring job {job_id}: {str(e)}")
+            try:
+                await websocket.send_json({
+                    "type": "error",
+                    "message": str(e)
+                })
+            except:
+                pass
+        finally:
+            try:
+                await websocket.close()
+            except:
+                pass
 
     async def handle_session(self, websocket: WebSocket, session_id: str):
         """Handle WebSocket messages for a shell session.

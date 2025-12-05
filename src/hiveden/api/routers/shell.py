@@ -228,6 +228,27 @@ async def websocket_package_install(
     await ws_handler.handle_package_install(websocket, package_name, package_manager)
 
 
+@router.websocket("/ws/jobs/{job_id}")
+async def websocket_job_monitor(websocket: WebSocket, job_id: str):
+    """WebSocket endpoint for monitoring a background job.
+    
+    Connect to this endpoint to receive real-time logs from a running job.
+    
+    Message format (server -> client):
+    ```json
+    {
+        "type": "log",
+        "data": {
+            "timestamp": "...",
+            "output": "...",
+            "error": false
+        }
+    }
+    ```
+    """
+    await ws_handler.handle_job_monitoring(websocket, job_id)
+
+
 # Convenience endpoint for Docker container shell
 @router.post("/docker/{container_id}/shell", response_model=DataResponse)
 def create_docker_shell(

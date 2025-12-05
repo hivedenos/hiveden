@@ -63,4 +63,4 @@ def server(host, port, db_url):
     os.environ["HIVEDEN_DB_URL"] = db_url
 
     from hiveden.api.server import app
-    uvicorn.run(app, host=host, port=port)
+    uvicorn.run(app, host=host, port=port, log_level="debug")

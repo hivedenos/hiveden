@@ -1,5 +1,6 @@
 """API router for storage operations."""
 
+from fastapi.logger import logger
 from fastapi import APIRouter, HTTPException
 from typing import List
 
@@ -30,4 +31,23 @@ def list_strategies():
         strategies = manager.get_strategies()
         return DataResponse(data=[s.dict() for s in strategies])
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/apply", response_model=DataResponse)
+async def apply_strategy(strategy: StorageStrategy):
+    """
+    Applies a storage strategy. Starts a background job.
+    """
+    try:
+        job_id = manager.apply_strategy(strategy)
+        return DataResponse(
+            message="Storage configuration started",
+            data={"job_id": job_id}
+        )
+    except Exception as e:
+        logger.error(f"Error applying storage strategy: {e}")
+
+        import traceback
+        logger.error(f"Error applying storage strategy: {e}\n{traceback.format_exc()}")
+
         raise HTTPException(status_code=500, detail=str(e))
