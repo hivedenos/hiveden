@@ -81,7 +81,7 @@ jobs:
       - name: Build package
         run: |
           # Install sudo, base-devel and python build dependencies as root first
-          pacman -Syu --noconfirm base-devel sudo python-build python-installer python-wheel python-pip
+          pacman -Syu --noconfirm base-devel sudo python-build python-installer python-wheel python-pip python-setuptools
 
           # Create a non-root user and switch to it
           useradd -m builder
