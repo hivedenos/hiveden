@@ -2,6 +2,8 @@ name: Create Release and Packages
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*.*.*"
 
@@ -11,16 +13,39 @@ jobs:
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Get current date for snapshot
+        id: date
+        run: echo "date=$(date +'%Y%m%d%H%M%S')" >> $GITHUB_OUTPUT
+
+      - name: Determine tag and release names
+        id: set_release_vars
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "RELEASE_TAG=${{ github.ref }}" >> $GITHUB_ENV
+            echo "RELEASE_NAME=Release ${{ github.ref_name }}" >> $GITHUB_ENV
+            echo "IS_PRERELEASE=false" >> $GITHUB_ENV
+            echo "IS_DRAFT=false" >> $GITHUB_ENV
+          else
+            # For branch pushes, create a snapshot release name
+            echo "RELEASE_TAG=snapshot-${{ github.ref_name }}-${{ steps.date.outputs.date }}-${{ github.sha }}" >> $GITHUB_ENV
+            echo "RELEASE_NAME=Snapshot ${{ github.ref_name }} (${{ github.sha }})" >> $GITHUB_ENV
+            echo "IS_PRERELEASE=true" >> $GITHUB_ENV
+            echo "IS_DRAFT=true" >> $GITHUB_ENV
+          fi
+
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
-          draft: false
-          prerelease: false
+          tag_name: ${{ env.RELEASE_TAG }}
+          release_name: ${{ env.RELEASE_NAME }}
+          draft: ${{ env.IS_DRAFT }}
+          prerelease: ${{ env.IS_PRERELEASE }}
 
   build-python-package:
     runs-on: ubuntu-latest
