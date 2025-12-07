@@ -122,7 +122,9 @@ jobs:
       - name: Build package
         run: |
           apt-get update
-          apt-get install -y build-essential debhelper devscripts dh-python python3-venv python3-pip liblxc-dev
+          # Try installing liblxc-dev, falling back to lxc-dev if not found
+          apt-get install -y build-essential debhelper devscripts dh-python python3-venv python3-pip lxc-dev
+          
           # Explicitly install python3-all and python3-setuptools as they are build-deps and might conflict.
           apt-get install -y python3-all python3-setuptools python3-wheel python3-build
           
