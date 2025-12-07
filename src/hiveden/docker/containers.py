@@ -223,6 +223,14 @@ class DockerManager:
             self.stop_container(container.Id)
             print(f"Container '{container.Name}' stopped.")
 
+    def start_container(self, container_id):
+        """Start a stopped Docker container."""
+        # Use the raw client to get the container object, which has the .start() method
+        container = self.client.containers.get(container_id)
+        container.start()
+        # Return the Pydantic model for the response
+        return self.get_container(container_id)
+
     def stop_container(self, container_id):
         """Stop a running Docker container."""
         # Use the raw client to get the container object, which has the .stop() method
@@ -314,6 +322,9 @@ def list_containers(*args, **kwargs):
 
 def stop_containers(containers):
     return DockerManager().stop_containers(containers)
+
+def start_container(container_id):
+    return DockerManager().start_container(container_id)
 
 def stop_container(container_id):
     return DockerManager().stop_container(container_id)

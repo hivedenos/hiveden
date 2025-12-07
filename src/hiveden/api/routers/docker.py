@@ -108,6 +108,16 @@ def get_one_container(container_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/containers/{container_id}/start", response_model=DataResponse)
+def start_one_container(container_id: str):
+    from hiveden.docker.containers import start_container
+    try:
+        return DataResponse(data=start_container(container_id).dict())
+    except Exception as e:
+        logger.error(f"Error starting container {container_id}: {e}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/containers/{container_id}/stop", response_model=DataResponse)
 def stop_one_container(container_id: str):
     from hiveden.docker.containers import stop_container
