@@ -128,7 +128,7 @@ jobs:
           cp -r packaging/debian .
           
           # Run debuild from the root of the source tree
-          debuild -us -uc
+          debuild -b -us -uc
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
