@@ -65,7 +65,7 @@ jobs:
       - name: Build package
         run: python -m build
       - name: Upload artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: python-package
           path: dist/
@@ -81,7 +81,7 @@ jobs:
           cd packaging/arch
           makepkg -sf
       - name: Upload artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: arch-package
           path: packaging/arch/*.pkg.tar.zst
@@ -98,7 +98,7 @@ jobs:
           cd packaging/debian
           debuild -us -uc
       - name: Upload artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: debian-package
           path: ../*.deb
@@ -114,7 +114,7 @@ jobs:
           cd packaging/fedora
           rpmbuild -ba hiveden.spec
       - name: Upload artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: fedora-package
           path: /root/rpmbuild/RPMS/noarch/*.rpm
@@ -124,7 +124,7 @@ jobs:
     needs: [create-release, build-python-package, build-arch-package, build-debian-package, build-fedora-package]
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4
         with:
           path: artifacts
       - name: Upload Python sdist
