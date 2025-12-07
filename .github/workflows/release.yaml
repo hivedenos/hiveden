@@ -122,7 +122,7 @@ jobs:
       - name: Build package
         run: |
           apt-get update
-          apt-get install -y build-essential debhelper devscripts python3-all python3-setuptools python3-wheel python3-build
+          apt-get install -y build-essential debhelper devscripts python3-all python3-setuptools python3-wheel python3-build dh-python
           
           # Copy debian directory to the root of the source tree for debuild
           cp -r packaging/debian .
