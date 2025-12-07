@@ -159,6 +159,11 @@ jobs:
           # Run debuild from the root of the source tree
           # Skip tests during packaging build
           DEB_BUILD_OPTIONS=nocheck debuild -b -us -uc
+          
+          # Move artifacts from parent directory to current directory
+          mv ../*.deb .
+          mv ../*.buildinfo . || true
+          mv ../*.changes . || true
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -195,11 +200,14 @@ jobs:
           # Run rpmbuild
           cd packaging/fedora
           rpmbuild -ba hiveden.spec
+          
+          # Move artifacts to workspace root
+          cp ~/rpmbuild/RPMS/noarch/*.rpm $GITHUB_WORKSPACE/
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: fedora-package
-          path: /root/rpmbuild/RPMS/noarch/*.rpm
+          path: ./*.rpm
 
   upload-assets:
     runs-on: ubuntu-latest
