@@ -64,7 +64,7 @@ jobs:
           pip install build
       - name: Inject version
         run: |
-          sed -i 's|__version__ = "test"|__version__ = "${{ github.ref_name }}"|' src/hiveden/version.py
+          sed -i "s|^__version__ = .*|__version__ = \"${{ github.ref_name }}\"|" src/hiveden/version.py
       - name: Build package
         run: python -m build
       - name: Upload artifact
@@ -98,7 +98,7 @@ jobs:
             PKGVER=$(grep "^pkgver=" packaging/arch/PKGBUILD | cut -d= -f2)
             
             # Inject version into version.py
-            sed -i "s|__version__ = \"test\"|__version__ = \"$PKGVER\"|" src/hiveden/version.py
+            sed -i "s|^__version__ = .*|__version__ = \"$PKGVER\"|" src/hiveden/version.py
             
             # Create the tarball structure makepkg expects (hiveden-0.1.0 directory inside)
             mkdir -p /tmp/hiveden-$PKGVER
@@ -173,7 +173,7 @@ jobs:
           VERSION=$(grep "^Version:" packaging/fedora/hiveden.spec | awk '{print $2}')
           
           # Inject version into version.py
-          sed -i "s|__version__ = \"test\"|__version__ = \"$VERSION\"|" src/hiveden/version.py
+          sed -i "s|^__version__ = .*|__version__ = \"$VERSION\"|" src/hiveden/version.py
           
           # Create source tarball (hiveden-0.1.0 directory structure)
           mkdir -p /tmp/hiveden-$VERSION
