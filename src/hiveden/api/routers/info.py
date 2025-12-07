@@ -19,3 +19,12 @@ def get_hw_info_endpoint():
         return DataResponse(data=get_hw_info())
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/version", response_model=DataResponse)
+def get_version_endpoint():
+    from hiveden.version import get_version
+    try:
+        return DataResponse(data={"version": get_version()})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

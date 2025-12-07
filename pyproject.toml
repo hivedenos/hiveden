@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hiveden"
-version = "0.0.1"
+dynamic = ["version"]
 authors = [
   { name="Ermal Guni", email="ermalguni@gmail.com" },
 ]
@@ -29,6 +29,9 @@ dependencies = [
     "paramiko",
     "websockets",
 ]
+
+[tool.setuptools.dynamic]
+version = {attr = "hiveden.version.__version__"}
 
 [project.urls]
 "Homepage" = "https://github.com/hiveden/hiveden"
