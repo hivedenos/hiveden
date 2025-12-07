@@ -131,12 +131,13 @@ jobs:
           # Copy debian directory to the root of the source tree for debuild
           cp -r packaging/debian .
           
-          # Remove conflicting system package to allow pip to reinstall it
-          apt-get remove -y python3-typing-extensions || true
-
           # Run debuild from the root of the source tree
           # Skip tests during packaging build
           DEB_BUILD_OPTIONS=nocheck debuild -b -us -uc
+
+          # Remove conflicting system package to allow pip to reinstall it
+          apt-get remove -y python3-typing-extensions || true
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
