@@ -123,8 +123,12 @@ jobs:
         run: |
           apt-get update
           apt-get install -y build-essential debhelper devscripts python3-all python3-setuptools python3-wheel python3-build
-          cd packaging/debian
-          debuild -us -uc --check-dirname-level=0
+          
+          # Copy debian directory to the root of the source tree for debuild
+          cp -r packaging/debian .
+          
+          # Run debuild from the root of the source tree
+          debuild -us -uc
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
