@@ -8,3 +8,5 @@ override_dh_auto_build:
 
 override_dh_auto_install:
 	pip install --break-system-packages --ignore-installed --root=$(CURDIR)/debian/hiveden/ --prefix=/usr dist/*.whl
+	# Remove /usr/local artifacts if any to satisfy Debian policy/dh_usrlocal
+	rm -rf $(CURDIR)/debian/hiveden/usr/local
