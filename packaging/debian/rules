@@ -7,4 +7,4 @@ override_dh_auto_build:
 	python3 -m build
 
 override_dh_auto_install:
-	pip install --root=$(CURDIR)/debian/hiveden/ --prefix=/usr dist/*.whl
+	pip install --break-system-packages --ignore-installed --root=$(CURDIR)/debian/hiveden/ --prefix=/usr dist/*.whl
