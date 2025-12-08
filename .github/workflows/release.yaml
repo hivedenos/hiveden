@@ -102,16 +102,27 @@ jobs:
           sudo -u builder bash -c '
             # Create source tarball from current checkout
             cd "$GITHUB_WORKSPACE"
-            # Determine version from PKGBUILD
-            PKGVER=$(grep "^pkgver=" packaging/arch/PKGBUILD | cut -d= -f2)
+            
+            # Determine version
+            if [[ "${{ github.ref_type }}" == "tag" ]]; then
+              VERSION="${{ github.ref_name }}"
+              # Strip v prefix
+              VERSION="${VERSION#v}"
+            else
+              # Snapshot version
+              VERSION="0.0.0.dev$(date +'%Y%m%d%H%M%S')"
+            fi
+            
+            # Inject version into PKGBUILD
+            sed -i "s|^pkgver=.*|pkgver=$VERSION|" packaging/arch/PKGBUILD
             
             # Inject version into version.py
-            sed -i "s|^__version__ = .*|__version__ = \"$PKGVER\"|" src/hiveden/version.py
+            sed -i "s|^__version__ = .*|__version__ = \"$VERSION\"|" src/hiveden/version.py
             
-            # Create the tarball structure makepkg expects (hiveden-0.1.0 directory inside)
-            mkdir -p /tmp/hiveden-$PKGVER
-            cp -r ./* /tmp/hiveden-$PKGVER/
-            tar -czf packaging/arch/hiveden-$PKGVER.tar.gz -C /tmp hiveden-$PKGVER
+            # Create the tarball structure makepkg expects (hiveden-VERSION directory inside)
+            mkdir -p /tmp/hiveden-$VERSION
+            cp -r ./* /tmp/hiveden-$VERSION/
+            tar -czf packaging/arch/hiveden-$VERSION.tar.gz -C /tmp hiveden-$VERSION
             
             # Update PKGBUILD to use local file
             cd packaging/arch
@@ -140,9 +151,20 @@ jobs:
           apt-get install -y python3-all python3-setuptools python3-wheel python3-build
           
           # Inject version into version.py
-          # Debian version 0.1.0-1 -> 0.1.0
-          VERSION=$(head -n 1 packaging/debian/changelog | cut -d\( -f2 | cut -d\) -f1 | cut -d- -f1)
-          sed -i "s|__version__ = \"test\"|__version__ = \"$VERSION\"|" src/hiveden/version.py
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VERSION="${{ github.ref_name }}"
+            # Strip v prefix
+            VERSION="${VERSION#v}"
+          else
+            # Snapshot version
+            VERSION="0.0.0.dev$(date +'%Y%m%d%H%M%S')"
+          fi
+          
+          # Update changelog
+          sed -i "s|hiveden (0.0.0-1)|hiveden ($VERSION-1)|" packaging/debian/changelog
+          
+          # Update python version
+          sed -i "s|__version__ = \"0.0.0+test\"|__version__ = \"$VERSION\"|" src/hiveden/version.py
           
           # Copy debian directory to the root of the source tree for debuild
           cp -r packaging/debian .
@@ -185,13 +207,23 @@ jobs:
           # Setup rpmbuild directory structure
           mkdir -p ~/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
           
-          # Determine version from spec file
-          VERSION=$(grep "^Version:" packaging/fedora/hiveden.spec | awk '{print $2}')
+          # Determine version
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VERSION="${{ github.ref_name }}"
+            # Strip v prefix
+            VERSION="${VERSION#v}"
+          else
+            # Snapshot version
+            VERSION="0.0.0.dev$(date +'%Y%m%d%H%M%S')"
+          fi
+          
+          # Inject version into spec file
+          sed -i "s|^Version:.*|Version:        $VERSION|" packaging/fedora/hiveden.spec
           
           # Inject version into version.py
           sed -i "s|^__version__ = .*|__version__ = \"$VERSION\"|" src/hiveden/version.py
           
-          # Create source tarball (hiveden-0.1.0 directory structure)
+          # Create source tarball (hiveden-VERSION directory structure)
           mkdir -p /tmp/hiveden-$VERSION
           cp -r . /tmp/hiveden-$VERSION/
           tar -czf ~/rpmbuild/SOURCES/v$VERSION.tar.gz -C /tmp hiveden-$VERSION

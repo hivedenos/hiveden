@@ -1,5 +1,5 @@
 Name:           hiveden
-Version:        0.1.0
+Version:        0.0.0
 Release:        1%{?dist}
 Summary:        A CLI tool and REST API for managing your personal server.
 
