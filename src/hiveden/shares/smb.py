@@ -4,6 +4,7 @@ import subprocess
 import os
 from hiveden.pkgs.manager import get_package_manager
 from hiveden.hwosinfo.os import get_os_info
+from hiveden.shares.models import SMBShare
 
 SMB_CONF_PATH = "/etc/samba/smb.conf"
 
@@ -21,6 +22,9 @@ class SMBManager:
         pm = get_package_manager()
         # Most distros use 'samba'
         pm.install("samba")
+
+    def _str_to_bool(self, val: str) -> bool:
+        return val.lower() in ('yes', 'true', '1', 'on')
 
     def list_shares(self):
         """List all samba shares."""
@@ -40,14 +44,14 @@ class SMBManager:
             if section.lower() == 'global':
                 continue
             
-            shares.append({
-                'name': section,
-                'path': config[section].get('path', 'N/A'),
-                'comment': config[section].get('comment', ''),
-                'read_only': config[section].get('read only', 'yes'),
-                'browsable': config[section].get('browsable', 'yes'),
-                'guest_ok': config[section].get('guest ok', 'no')
-            })
+            shares.append(SMBShare(
+                name=section,
+                path=config[section].get('path', 'N/A'),
+                comment=config[section].get('comment', ''),
+                read_only=self._str_to_bool(config[section].get('read only', 'yes')),
+                browsable=self._str_to_bool(config[section].get('browsable', 'yes')),
+                guest_ok=self._str_to_bool(config[section].get('guest ok', 'no'))
+            ))
         return shares
 
     def create_share(self, name, path, comment="", readonly=False, browsable=True, guest_ok=False):

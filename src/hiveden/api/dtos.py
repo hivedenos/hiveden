@@ -1,6 +1,11 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel
+
+from hiveden.docker.models import Container as DockerContainer, Network as DockerNetwork
+from hiveden.pkgs.models import PackageStatus
+from hiveden.storage.models import Disk, DiskDetail, StorageStrategy
+from hiveden.shares.models import SMBShare
 
 
 class ConfigResponse(BaseModel):
@@ -10,10 +15,6 @@ class ConfigResponse(BaseModel):
 class BaseResponse(BaseModel):
     status: str = "success"
     message: Optional[str] = None
-
-
-class DataResponse(BaseResponse):
-    data: Optional[Any] = None
 
 
 class SuccessResponse(BaseResponse):
@@ -69,15 +70,6 @@ class ZFSDatasetCreate(BaseModel):
     name: str
 
 
-class SMBShare(BaseModel):
-    name: str
-    path: str
-    comment: Optional[str] = None
-    read_only: bool = False
-    browsable: bool = True
-    guest_ok: bool = False
-
-
 class SMBShareCreate(BaseModel):
     name: str
     path: str
@@ -112,3 +104,50 @@ class CreateBtrfsShareRequest(BaseModel):
     parent_path: str
     name: str
     mount_path: str
+
+
+class VersionInfo(BaseModel):
+    version: str
+
+
+class JobInfo(BaseModel):
+    job_id: str
+    message: Optional[str] = None
+
+
+class DataResponse(BaseResponse):
+    data: Optional[Union[
+        DockerContainer,
+        DockerNetwork,
+        DiskDetail,
+        Disk,
+        StorageStrategy,
+        PackageStatus,
+        OSInfo,
+        HWInfo,
+        LXCContainer,
+        ZFSPool,
+        ZFSDataset,
+        SMBShare,
+        BtrfsVolume,
+        BtrfsSubvolume,
+        BtrfsShare,
+        VersionInfo,
+        JobInfo,
+        List[DockerContainer],
+        List[DockerNetwork],
+        List[Disk],
+        List[StorageStrategy],
+        List[PackageStatus],
+        List[LXCContainer],
+        List[ZFSPool],
+        List[ZFSDataset],
+        List[SMBShare],
+        List[BtrfsVolume],
+        List[BtrfsSubvolume],
+        List[BtrfsShare],
+        List[str],
+        List[Dict[str, Any]],
+        Dict[str, Any]
+    ]] = None
+
