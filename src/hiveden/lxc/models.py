@@ -1,5 +1,6 @@
 from dataclasses import dataclass
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
+from pydantic import BaseModel
 
 @dataclass
 class Resources:
@@ -59,3 +60,11 @@ class Category:
     description: str
     icon: str
     scripts: List[Script]
+
+class LXCContainer(BaseModel):
+    name: str
+    state: str
+    status: str
+    pid: int
+    ips: List[str]
+    ipv4: List[str]

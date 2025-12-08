@@ -3,6 +3,7 @@ from fastapi.logger import logger
 import traceback
 
 from hiveden.api.dtos import DataResponse, SuccessResponse, ZFSDatasetCreate, ZFSPoolCreate
+from hiveden.shares.models import ZFSPool, ZFSDataset, BtrfsVolume, BtrfsShare
 
 router = APIRouter(prefix="/shares", tags=["Shares"])
 
@@ -11,10 +12,13 @@ def list_zfs_pools_endpoint():
     from hiveden.shares.zfs import ZFSManager
     try:
         manager = ZFSManager()
-        return DataResponse(data=manager.list_pools())
+        # Convert dicts to models
+        pools = [ZFSPool(name=p['name']) for p in manager.list_pools()]
+        return DataResponse(data=pools)
     except Exception as e:
         logger.error(f"Error listing ZFS pools: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.post("/zfs/pools", response_model=SuccessResponse)
 def create_zfs_pool_endpoint(pool: ZFSPoolCreate):
@@ -43,7 +47,8 @@ def list_zfs_datasets_endpoint(pool: str):
     from hiveden.shares.zfs import ZFSManager
     try:
         manager = ZFSManager()
-        return DataResponse(data=manager.list_datasets(pool))
+        datasets = [ZFSDataset(name=d['name']) for d in manager.list_datasets(pool)]
+        return DataResponse(data=datasets)
     except Exception as e:
         logger.error(f"Error listing ZFS datasets: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -121,13 +126,14 @@ def destroy_smb_share_endpoint(name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-from hiveden.api.dtos import CreateBtrfsShareRequest, BtrfsShare
+from hiveden.api.dtos import CreateBtrfsShareRequest
 
 @router.get("/btrfs/volumes", response_model=DataResponse)
 def list_btrfs_volumes_endpoint():
     from hiveden.shares.btrfs import BtrfsManager
     try:
         manager = BtrfsManager()
+        # manager.list_volumes() returns List[BtrfsVolume]
         return DataResponse(data=manager.list_volumes())
     except Exception as e:
         logger.error(f"Error listing Btrfs volumes: {e}\n{traceback.format_exc()}")
@@ -138,6 +144,7 @@ def list_btrfs_shares_endpoint():
     from hiveden.shares.btrfs import BtrfsManager
     try:
         manager = BtrfsManager()
+        # manager.list_shares() returns List[BtrfsShare]
         return DataResponse(data=manager.list_shares())
     except Exception as e:
         logger.error(f"Error listing Btrfs shares: {e}\n{traceback.format_exc()}")

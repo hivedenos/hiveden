@@ -5,7 +5,16 @@ from pydantic import BaseModel
 from hiveden.docker.models import Container as DockerContainer, Network as DockerNetwork
 from hiveden.pkgs.models import PackageStatus
 from hiveden.storage.models import Disk, DiskDetail, StorageStrategy
-from hiveden.shares.models import SMBShare
+from hiveden.shares.models import (
+    SMBShare,
+    ZFSPool,
+    ZFSDataset,
+    BtrfsVolume,
+    BtrfsSubvolume,
+    BtrfsShare
+)
+from hiveden.lxc.models import LXCContainer
+from hiveden.hwosinfo.models import OSInfo, HWInfo
 
 
 class ConfigResponse(BaseModel):
@@ -25,45 +34,14 @@ class ErrorResponse(BaseResponse):
     status: str = "error"
 
 
-class OSInfo(BaseModel):
-    system: str
-    release: str
-    version: str
-    machine: str
-    processor: str
-    hostname: str
-
-
-class HWInfo(BaseModel):
-    cpu: Dict
-    memory: Dict
-    disk: Dict
-    network: Dict
-
-
-class LXCContainer(BaseModel):
-    name: str
-    state: str
-    pid: int
-    ips: List[str]
-
-
 class LXCContainerCreate(BaseModel):
     name: str
     template: str = "ubuntu"
 
 
-class ZFSPool(BaseModel):
-    name: str
-
-
 class ZFSPoolCreate(BaseModel):
     name: str
     devices: List[str]
-
-
-class ZFSDataset(BaseModel):
-    name: str
 
 
 class ZFSDatasetCreate(BaseModel):
@@ -77,27 +55,6 @@ class SMBShareCreate(BaseModel):
     read_only: bool = False
     browsable: bool = True
     guest_ok: bool = False
-
-
-class BtrfsVolume(BaseModel):
-    device: str
-    mountpoint: str
-    label: Optional[str] = None
-
-
-class BtrfsSubvolume(BaseModel):
-    id: int
-    parent_id: int
-    path: str
-    name: str
-
-
-class BtrfsShare(BaseModel):
-    name: str
-    parent_path: str
-    mount_path: str
-    device: str
-    subvolid: str
 
 
 class CreateBtrfsShareRequest(BaseModel):

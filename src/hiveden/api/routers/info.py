@@ -3,6 +3,7 @@ from fastapi.logger import logger
 import traceback
 
 from hiveden.api.dtos import DataResponse
+from hiveden.hwosinfo.models import OSInfo, HWInfo
 
 router = APIRouter(prefix="/info", tags=["Info"])
 
@@ -10,7 +11,7 @@ router = APIRouter(prefix="/info", tags=["Info"])
 def get_os_info_endpoint():
     from hiveden.hwosinfo.os import get_os_info
     try:
-        return DataResponse(data=get_os_info())
+        return DataResponse(data=OSInfo(**get_os_info()))
     except Exception as e:
         logger.error(f"Error getting OS info: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -19,7 +20,7 @@ def get_os_info_endpoint():
 def get_hw_info_endpoint():
     from hiveden.hwosinfo.hw import get_hw_info
     try:
-        return DataResponse(data=get_hw_info())
+        return DataResponse(data=HWInfo(**get_hw_info()))
     except Exception as e:
         logger.error(f"Error getting hardware info: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))

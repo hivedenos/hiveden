@@ -3,6 +3,7 @@ from fastapi.logger import logger
 import traceback
 
 from hiveden.api.dtos import DataResponse, LXCContainerCreate, SuccessResponse
+from hiveden.lxc.models import LXCContainer
 
 router = APIRouter(prefix="/lxc", tags=["LXC"])
 
@@ -10,7 +11,17 @@ router = APIRouter(prefix="/lxc", tags=["LXC"])
 def list_lxc_containers_endpoint():
     from hiveden.lxc.containers import list_containers
     try:
-        containers = [{"name": c.name, "state": c.state, "pid": c.init_pid, "ips": c.get_ips()} for c in list_containers()]
+        containers = [
+            LXCContainer(
+                name=c.name,
+                state=c.state,
+                status=c.state,
+                pid=c.init_pid,
+                ips=c.get_ips(),
+                ipv4=[ip for ip in c.get_ips() if "." in ip]
+            )
+            for c in list_containers()
+        ]
         return DataResponse(data=containers)
     except Exception as e:
         logger.error(f"Error listing LXC containers: {e}\n{traceback.format_exc()}")
@@ -21,7 +32,16 @@ def create_lxc_container_endpoint(container: LXCContainerCreate):
     from hiveden.lxc.containers import create_container
     try:
         c = create_container(**container.dict())
-        return DataResponse(data={"name": c.name, "state": c.state})
+        # create_container returns the lxc object, we map it to our model
+        # Assuming created container might not have IPs immediately, but let's check attributes
+        return DataResponse(data=LXCContainer(
+            name=c.name,
+            state=c.state,
+            status=c.state,
+            pid=c.init_pid,
+            ips=c.get_ips(),
+            ipv4=[ip for ip in c.get_ips() if "." in ip]
+        ))
     except Exception as e:
         logger.error(f"Error creating LXC container: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -31,7 +51,14 @@ def get_lxc_container_endpoint(name: str):
     from hiveden.lxc.containers import get_container
     try:
         c = get_container(name)
-        return DataResponse(data={"name": c.name, "state": c.state, "pid": c.init_pid, "ips": c.get_ips()})
+        return DataResponse(data=LXCContainer(
+            name=c.name,
+            state=c.state,
+            status=c.state,
+            pid=c.init_pid,
+            ips=c.get_ips(),
+            ipv4=[ip for ip in c.get_ips() if "." in ip]
+        ))
     except Exception as e:
         logger.error(f"Error getting LXC container {name}: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
