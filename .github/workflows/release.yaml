@@ -156,6 +156,9 @@ jobs:
           # Explicitly install python3-all and python3-setuptools as they are build-deps and might conflict.
           apt-get install -y python3-all python3-setuptools python3-wheel python3-build
  
+          # List directory contents recursively
+          ls -laR .
+
           # Run debuild from the root of the source tree
           # Skip tests during packaging build
           DEB_BUILD_OPTIONS=nocheck debuild -b -us -uc
