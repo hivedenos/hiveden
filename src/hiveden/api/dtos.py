@@ -96,6 +96,22 @@ class NetworkResponse(BaseResponse):
     data: DockerNetwork
 
 
+class DiskListResponse(BaseResponse):
+    data: List[Disk]
+
+
+class DiskDetailResponse(BaseResponse):
+    data: DiskDetail
+
+
+class StorageStrategyListResponse(BaseResponse):
+    data: List[StorageStrategy]
+
+
+class StorageStrategyApplyResponse(BaseResponse):
+    data: JobInfo
+
+
 class DataResponse(BaseResponse):
     data: Optional[Union[
         DockerContainer,
