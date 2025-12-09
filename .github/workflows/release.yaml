@@ -155,15 +155,13 @@ jobs:
           # Inject version into version.py
           if [[ "${{ github.ref_type }}" == "tag" ]]; then
             VERSION="${{ github.ref_name }}"
-            # Strip v prefix
-            VERSION="${VERSION#v}"
           else
             # Snapshot version
             VERSION="0.0.0.dev$(date +'%Y%m%d%H%M%S')"
           fi
 
           # Update changelog
-          sed -i "s|hiveden (0.0.0-1)|hiveden ($VERSION-1)|" packaging/debian/changelog
+          sed -i "s|hiveden (0.0.0-1)|hiveden ($VERSION)|" packaging/debian/changelog
 
           # Update python version
           sed -i "s|__version__ = \"0.0.0+test\"|__version__ = \"$VERSION\"|" src/hiveden/version.py
@@ -172,7 +170,7 @@ jobs:
           cp -r packaging/debian .
           # Copy service and config files to root so dh_install can find them
           cp packaging/hiveden.service .
-          cp packaging/hiveden.default.yaml .
+          cp packaging/hiveden.default.yaml config.yaml
 
           # Remove conflicting system package to allow pip to reinstall it
           apt-get remove -y python3-typing-extensions || true
