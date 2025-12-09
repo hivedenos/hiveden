@@ -1,0 +1,4 @@
+#!/bin/bash
+
+mkdir -p /opt/hiveden
+chmod 644 /opt/hiveden
