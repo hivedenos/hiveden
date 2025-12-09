@@ -7,5 +7,5 @@ Standards-Version: 4.5.0
 
 Package: hiveden
 Architecture: all
-Depends: ${python3:Depends}, ${misc:Depends}, python3-paramiko, python3-websockets, python3-uvicorn, python3-psutil, python3-fastapi, python3-docker, python3-pydantic, python3-starlette, python3-typing-extensions, python3-nacl, python3-uvloop, python3-h11, python3-wsproto, python3-anyio, python3-sniffio, docker.io, python3-psycopg2
+Depends: ${python3:Depends}, ${misc:Depends}, python3-paramiko, python3-websockets, python3-uvicorn, python3-psutil, python3-fastapi, python3-docker, python3-pydantic, python3-starlette, python3-typing-extensions, python3-nacl, python3-uvloop, python3-h11, python3-wsproto, python3-anyio, python3-sniffio, docker.io, python3-psycopg2, smartmontools
 Description: A CLI tool and REST API for managing your personal server.
