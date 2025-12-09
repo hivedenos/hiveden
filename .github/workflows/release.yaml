@@ -31,14 +31,14 @@ jobs:
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
             echo "RELEASE_TAG=${{ github.ref }}" >> $GITHUB_ENV
             echo "RELEASE_NAME=Release ${{ github.ref_name }}" >> $GITHUB_ENV
-            echo "IS_PRERELEASE=false" >> $GITHUB_ENV
-            echo "IS_DRAFT=false" >> $GITHUB_ENV
+            # echo "IS_PRERELEASE=false" >> $GITHUB_ENV
+            # echo "IS_DRAFT=false" >> $GITHUB_ENV
           else
             # For branch pushes, create a snapshot release name
             echo "RELEASE_TAG=snapshot-${{ github.ref_name }}-${{ steps.date.outputs.date }}-${{ github.sha }}" >> $GITHUB_ENV
             echo "RELEASE_NAME=Snapshot ${{ github.ref_name }} (${{ github.sha }})" >> $GITHUB_ENV
-            echo "IS_PRERELEASE=true" >> $GITHUB_ENV
-            echo "IS_DRAFT=true" >> $GITHUB_ENV
+            # echo "IS_PRERELEASE=true" >> $GITHUB_ENV
+            # echo "IS_DRAFT=true" >> $GITHUB_ENV
           fi
 
       - name: Create Release
