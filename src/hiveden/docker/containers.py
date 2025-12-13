@@ -1,16 +1,8 @@
+import os
 import docker
 from docker import errors
 
-from hiveden.docker.images import image_exists, pull_image
-from hiveden.docker.models import Container
-from hiveden.docker.networks import create_network, network_exists
-
-client = docker.from_env()
-
-
-import docker
-from docker import errors
-
+from hiveden.config import config
 from hiveden.docker.images import image_exists, pull_image
 from hiveden.docker.models import Container
 from hiveden.docker.networks import create_network, network_exists
@@ -81,7 +73,17 @@ class DockerManager:
         volumes = {}
         if mounts:
             for mount in mounts:
-                volumes[mount.source] = {"bind": mount.target, "mode": "rw"}
+                source_path = mount.source
+                if getattr(mount, "is_app_directory", False):
+                    source_path = os.path.join(config.app_directory, mount.source)
+                    if not os.path.exists(source_path):
+                        try:
+                            os.makedirs(source_path, exist_ok=True)
+                            print(f"Created app directory: {source_path}")
+                        except OSError as e:
+                            print(f"Error creating app directory {source_path}: {e}")
+
+                volumes[source_path] = {"bind": mount.target, "mode": "rw"}
 
         container_name = kwargs.get("name", "")
         try:
@@ -331,7 +333,15 @@ class DockerManager:
         for b in binds:
             parts = b.split(':')
             if len(parts) >= 2:
-                mounts.append({'source': parts[0], 'target': parts[1]})
+                source = parts[0]
+                target = parts[1]
+                is_app_dir = False
+                
+                if source == config.app_directory or source.startswith(os.path.join(config.app_directory, "")):
+                    is_app_dir = True
+                    source = os.path.relpath(source, config.app_directory)
+
+                mounts.append({'source': source, 'target': target, 'is_app_directory': is_app_dir})
 
         return {
             "name": c.name.lstrip('/'),

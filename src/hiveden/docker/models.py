@@ -18,6 +18,7 @@ class Mount(BaseModel):
     source: str
     target: str
     type: str = "bind"
+    is_app_directory: bool = False
 
 
 class DockerContainer(BaseModel):
