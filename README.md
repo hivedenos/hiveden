@@ -104,7 +104,21 @@ Hiveden is configured using a single YAML file, `config.yaml`. This file allows 
 3. `~/.config/hiveden/config.yaml`
 4. `/etc/hiveden/config.yaml`
 
-Here's an example of what the configuration file looks like:
+### Environment Variables
+
+Sometimes you want to customize where things live without editing config files everywhere. Hiveden supports environment variables to set these defaults. Prefix them with `HIVEDEN_` and you're good to go.
+
+| Environment Variable | Default Value | Description |
+|---------------------|---------------|-------------|
+| `HIVEDEN_APP_DIRECTORY` | `/shares/apps` | The main hub for your application data. If you use `is_app_directory: true` in your mounts, folders will be created here. |
+| `HIVEDEN_MOVIES_DIRECTORY` | `/shares/movies` | Where your movies live. |
+| `HIVEDEN_TVSHOWS_DIRECTORY` | `/share/tvshows` | Where your TV shows live. |
+| `HIVEDEN_BACKUP_DIRECTORY` | `/shares/backups` | A safe place for your backups. |
+| `HIVEDEN_DOCKER_NETWORK_NAME`| `hiveden-net` | The default bridge network for your containers. |
+
+### Configuration File Example
+
+Here's an example of what the configuration file looks like, including the handy `is_app_directory` feature which automatically manages folders in your `HIVEDEN_APP_DIRECTORY`.
 
 ```yaml
 # Example configuration for Hiveden
@@ -124,6 +138,13 @@ docker:
       mounts:
         - source: /path/to/host/dir
           target: /path/in/container
+        # SPECIAL FEATURE: If you set is_app_directory to true, Hiveden will:
+        # 1. Look inside your HIVEDEN_APP_DIRECTORY (default: /shares/apps)
+        # 2. Create the folder 'my-app-data' if it doesn't exist
+        # 3. Mount it to /data in the container
+        - source: my-app-data
+          target: /data
+          is_app_directory: true
       labels:
         my-label: my-value
       ports:

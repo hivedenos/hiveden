@@ -1,4 +1,6 @@
 from typing import List, Optional
+import os
+import subprocess
 from hiveden.storage.devices import get_system_disks, get_unused_disks
 from hiveden.storage.strategies import generate_strategies
 from hiveden.storage.models import Disk, StorageStrategy, DiskDetail, SmartData
@@ -149,3 +151,60 @@ class StorageManager:
         # Submit to JobManager
         job_manager = JobManager()
         return job_manager.create_job(full_command)
+
+    def mount_partition(self, device: str, automatic: bool, mount_name: Optional[str]) -> str:
+        """
+        Mounts a partition to a directory in /mnt.
+        
+        Args:
+            device: The device path (e.g., /dev/sdb1)
+            automatic: Whether to automatically generate the mount name
+            mount_name: The desired mount name (if automatic is False)
+            
+        Returns:
+            The path where the device was mounted.
+        """
+        base_mount_path = "/mnt"
+        
+        target_name = ""
+        if automatic:
+            # Derive name from device, e.g. /dev/sdb1 -> sdb1
+            dev_name = os.path.basename(device)
+            target_name = dev_name
+            
+            # Check collision and auto-increment
+            counter = 1
+            full_path = os.path.join(base_mount_path, target_name)
+            while os.path.ismount(full_path) or (os.path.exists(full_path) and os.listdir(full_path)):
+                # If mount point exists and is mounted OR exists and is not empty (safety)
+                # But prompt specifically said "if there is something mounted there"
+                # Checking listdir is safer to avoid mounting over existing data if it's just a folder
+                target_name = f"{dev_name}-{counter}"
+                full_path = os.path.join(base_mount_path, target_name)
+                counter += 1
+        else:
+            if not mount_name:
+                 raise ValueError("mount_name must be provided if automatic is False")
+            target_name = mount_name
+            full_path = os.path.join(base_mount_path, target_name)
+            
+            if os.path.ismount(full_path):
+                raise ValueError(f"Mount point {target_name} is already in use")
+
+        mount_point = full_path
+        
+        # Create dir if not exists
+        try:
+            os.makedirs(mount_point, exist_ok=True)
+        except OSError as e:
+            raise Exception(f"Failed to create mount point {mount_point}: {e}")
+        
+        # Mount
+        try:
+             subprocess.run(["mount", device, mount_point], check=True, capture_output=True, text=True)
+        except subprocess.CalledProcessError as e:
+             # Cleanup dir if we created it and it's empty? 
+             # Maybe not, unsafe.
+             raise Exception(f"Failed to mount {device} to {mount_point}: {e.stderr}")
+             
+        return mount_point

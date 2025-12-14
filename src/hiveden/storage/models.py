@@ -52,3 +52,8 @@ class Share(BaseModel):
     path: str
     pool_name: str
     snapshots_enabled: bool = True
+
+class MountRequest(BaseModel):
+    device: str
+    automatic: bool
+    mount_name: Optional[str] = None

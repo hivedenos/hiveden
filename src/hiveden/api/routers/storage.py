@@ -9,13 +9,41 @@ from hiveden.api.dtos import (
     DiskDetailResponse,
     StorageStrategyListResponse,
     StorageStrategyApplyResponse,
-    ErrorResponse
+    ErrorResponse,
+    SuccessResponse
 )
 from hiveden.storage.manager import StorageManager
-from hiveden.storage.models import Disk, StorageStrategy
+from hiveden.storage.models import Disk, StorageStrategy, MountRequest
 
 router = APIRouter(prefix="/storage", tags=["Storage"])
 manager = StorageManager()
+
+@router.post(
+    "/mount",
+    response_model=SuccessResponse,
+    responses={
+        400: {"model": ErrorResponse, "description": "Bad Request"},
+        500: {"model": ErrorResponse, "description": "Internal Server Error"}
+    }
+)
+def mount_partition(request: MountRequest):
+    """
+    Mounts a disk partition.
+    """
+    try:
+        mount_point = manager.mount_partition(
+            device=request.device,
+            automatic=request.automatic,
+            mount_name=request.mount_name
+        )
+        return SuccessResponse(message=f"Device {request.device} mounted at {mount_point}")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error mounting device: {e}")
+        import traceback
+        logger.error(f"Error mounting device: {e}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get(
     "/devices", 
