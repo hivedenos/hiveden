@@ -7,6 +7,9 @@ from hiveden.config import config as app_config
 from hiveden.docker.images import image_exists, pull_image
 from hiveden.docker.models import Container
 from hiveden.docker.networks import create_network, network_exists
+from hiveden.apps.traefik import generate_traefik_labels, TraefikClient
+from hiveden.apps.pihole import PiHoleManager
+from hiveden.hwosinfo.hw import get_host_ip
 
 client = docker.from_env()
 
@@ -38,6 +41,7 @@ class DockerManager:
         ports=None,
         mounts=None,
         labels=None,
+        ingress_config=None,
         **kwargs,
     ):
         """Create a new Docker container and connect it to the hiveden network."""
@@ -58,6 +62,24 @@ class DockerManager:
         container_labels = kwargs.get("labels", {})
         if labels:
             container_labels.update(labels)
+        
+        if ingress_config:
+            # Handle Ingress Configuration
+            traefik_labels = generate_traefik_labels(ingress_config.domain, ingress_config.port)
+            container_labels.update(traefik_labels)
+            
+            # Filter ports: Remove the port that is being managed by ingress
+            if ports:
+                ports = [p for p in ports if p.container_port != ingress_config.port]
+
+            traefik_client = TraefikClient("http://localhost:8080")
+            pihole_ip = traefik_client.get_service_ip("pihole")
+            pihole_domains = traefik_client.find_domains_for_router("pihole")
+            if len(pihole_domains) > 0 and len(pihole_ip) > 0:
+                pihole_manager = PiHoleManager(pihole_domains[0], app_config.pihole_password)
+                target_ip = ingress_config.host_ip or get_host_ip()
+                pihole_manager.add_ingress_domain_to_pihole(pihole_ip[0], target_ip)
+
         container_labels["managed-by"] = "hiveden"
         kwargs["labels"] = container_labels
 
@@ -376,7 +398,8 @@ class DockerManager:
             env=config.env,
             ports=config.ports,
             mounts=config.mounts,
-            labels=config.labels
+            labels=config.labels,
+            ingress_config=config.ingress_config
         )
 
 

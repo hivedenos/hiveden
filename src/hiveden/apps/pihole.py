@@ -89,3 +89,11 @@ class PiHoleManager:
 
     def remove_from_whitelist(self, domain):
         return self.client.domain_management.delete_domain(domain, "allow", "exact")
+
+    def add_ingress_domain_to_pihole(self, domain: str, ip_address: str):
+        print(f"Adding ingress domain to Pi-hole: {domain} -> {ip_address}")
+        try:
+            self.add_dns_entry(domain, ip_address)
+            print(f"Successfully added {domain} -> {ip_address} to Pi-hole DNS.")
+        except Exception as e:
+            print(f"Failed to add ingress domain {domain} to Pi-hole DNS: {e}")

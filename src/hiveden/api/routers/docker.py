@@ -59,7 +59,8 @@ def create_template(template: TemplateCreate):
             "env": json.dumps([e.dict() for e in template.env]) if template.env else None,
             "ports": json.dumps([p.dict() for p in template.ports]) if template.ports else None,
             "mounts": json.dumps([m.dict() for m in template.mounts]) if template.mounts else None,
-            "labels": json.dumps(template.labels) if template.labels else None
+            "labels": json.dumps(template.labels) if template.labels else None,
+            "ingress_config": json.dumps(template.ingress_config.dict()) if template.ingress_config else None
         }
         
         for key, value in attributes.items():
@@ -115,7 +116,8 @@ def create_new_container(container: ContainerCreate):
             "env": json.dumps([e.dict() for e in container.env]) if container.env else None,
             "ports": json.dumps([p.dict() for p in container.ports]) if container.ports else None,
             "mounts": json.dumps([m.dict() for m in container.mounts]) if container.mounts else None,
-            "labels": json.dumps(container.labels) if container.labels else None
+            "labels": json.dumps(container.labels) if container.labels else None,
+            "ingress_config": json.dumps(container.ingress_config.dict()) if container.ingress_config else None
         }
         
         for key, value in attributes.items():
@@ -136,7 +138,8 @@ def create_new_container(container: ContainerCreate):
             env=container.env,
             ports=container.ports,
             mounts=container.mounts,
-            labels=container.labels
+            labels=container.labels,
+            ingress_config=container.ingress_config
         )
         
         # We need to return the Pydantic model, not the raw docker attributes
@@ -247,7 +250,8 @@ def update_container_configuration(container_id: str, container: ContainerCreate
                 "env": json.dumps([e.dict() for e in container.env]) if container.env else None,
                 "ports": json.dumps([p.dict() for p in container.ports]) if container.ports else None,
                 "mounts": json.dumps([m.dict() for m in container.mounts]) if container.mounts else None,
-                "labels": json.dumps(container.labels) if container.labels else None
+                "labels": json.dumps(container.labels) if container.labels else None,
+                "ingress_config": json.dumps(container.ingress_config.dict()) if container.ingress_config else None
             }
             
             for key, value in attributes.items():

@@ -20,7 +20,7 @@ def get_os_info_endpoint():
 def get_hw_info_endpoint():
     from hiveden.hwosinfo.hw import get_hw_info
     try:
-        return DataResponse(data=HWInfo(**get_hw_info()))
+        return DataResponse(data=get_hw_info())
     except Exception as e:
         logger.error(f"Error getting hardware info: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))

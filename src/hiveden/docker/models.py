@@ -21,6 +21,11 @@ class Mount(BaseModel):
     is_app_directory: bool = False
 
 
+class IngressConfig(BaseModel):
+    domain: str
+    port: int
+
+
 class DockerContainer(BaseModel):
     name: str
     image: str
@@ -29,6 +34,7 @@ class DockerContainer(BaseModel):
     ports: Optional[List[Port]] = None
     mounts: Optional[List[Mount]] = None
     labels: Optional[Dict[str, str]] = None
+    ingress_config: Optional[IngressConfig] = None
 
 class ContainerCreate(DockerContainer):
     is_container: bool = True
