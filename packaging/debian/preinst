@@ -1,0 +1,13 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = "upgrade" ] || [ "$1" = "install" ]; then
+    # Clean up old pyc files from the package directory
+    if [ -d "/usr/lib/python3/dist-packages/hiveden" ]; then
+        find /usr/lib/python3/dist-packages/hiveden -name "*.pyc" -delete
+        find /usr/lib/python3/dist-packages/hiveden -name "__pycache__" -type d -empty -delete
+    fi
+fi
+
+#DEBHELPER#
+exit 0

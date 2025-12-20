@@ -1,0 +1,14 @@
+pre_upgrade() {
+    # Clean up old pyc files
+    # We use a wildcard loop to handle potentially multiple python versions or the specific one
+    for d in /usr/lib/python*/site-packages/hiveden; do
+        if [ -d "$d" ]; then
+            find "$d" -name "*.pyc" -delete
+            find "$d" -name "__pycache__" -type d -empty -delete
+        fi
+    done
+}
+
+pre_install() {
+    :
+}

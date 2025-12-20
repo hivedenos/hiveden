@@ -23,6 +23,12 @@ getent group hiveden >/dev/null || groupadd -r hiveden
 getent passwd hiveden >/dev/null || \
     useradd -r -g hiveden -d /opt/hiveden -s /sbin/nologin \
     -c "Hiveden user" hiveden
+
+# Clean up old artifacts
+if [ -d "%{python3_sitelib}/hiveden" ]; then
+    find %{python3_sitelib}/hiveden -name "*.pyc" -delete
+    find %{python3_sitelib}/hiveden -name "__pycache__" -type d -empty -delete
+fi
 exit 0
 
 %prep
