@@ -54,6 +54,12 @@ class BtrfsManager:
                             except subprocess.CalledProcessError:
                                 # Fallback or skip if device not found
                                 pass
+                        elif device_spec.startswith("/dev/disk/by-uuid/"):
+                             # Resolve symlink to real device
+                             try:
+                                 device = os.path.realpath(device_spec)
+                             except Exception:
+                                 pass
 
                         subvolid = None
                         subvol_name = None
@@ -143,7 +149,7 @@ class BtrfsManager:
         # 5. Persist to fstab (simple append)
         # UUID=xxxx  mount_path  btrfs  subvolid=X,defaults  0  0
         # Note: Using UUID is more stable than device path
-        device_spec = f"UUID={uuid}" if uuid else device
+        device_spec = f"/dev/disk/by-uuid/{uuid}" if uuid else device
         fstab_entry = f"{device_spec} {mount_path} btrfs subvolid={subvol_id},defaults 0 0\n"
         with open("/etc/fstab", "a") as f:
             f.write(fstab_entry)
