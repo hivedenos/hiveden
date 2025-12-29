@@ -15,7 +15,8 @@ sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP')
 package() {
   cd "$srcdir/hiveden-$pkgver"
   python -m build --wheel --no-isolation
-  pip install --root="$pkgdir" --prefix=/usr dist/*.whl[extras]
+  
+  pip install --root="$pkgdir" --prefix=/usr dist/*.whl
 
   install -D -m644 "$srcdir/hiveden.service" "$pkgdir/usr/lib/systemd/system/hiveden.service"
   install -D -m644 "$srcdir/hiveden.default.yaml" "$pkgdir/etc/hiveden/config.yaml"
