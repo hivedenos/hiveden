@@ -45,8 +45,8 @@ install -D -m644 %{SOURCE2} %{buildroot}%{_sysconfdir}/hiveden/config.yaml
 
 %post
 %systemd_post hiveden.service
-# Install PyPI-only dependencies (pihole6api, yoyo-migrations)
-pip3 install --no-deps pihole6api yoyo-migrations 2>/dev/null || true
+# Install all Python dependencies via pip
+pip3 install --no-warn-script-location click fastapi uvicorn docker PyYAML psutil lxc paramiko websockets pihole6api yoyo-migrations 2>/dev/null || true
 
 %preun
 %systemd_preun hiveden.service
