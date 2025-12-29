@@ -17,16 +17,6 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "click",
-    "fastapi",
-    "uvicorn",
-    "docker",
-    "PyYAML",
-    "psutil",
-    "lxc",
-    "psycopg2",
-    "paramiko",
-    "websockets",
 ]
 
 [project.optional-dependencies]
