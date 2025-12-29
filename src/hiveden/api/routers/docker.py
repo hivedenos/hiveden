@@ -1,11 +1,10 @@
 import traceback
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.logger import logger
 from typing import Optional
 
 from hiveden.api.dtos import (
-    DataResponse, 
     SuccessResponse,
     ErrorResponse,
     ContainerListResponse, 
@@ -13,13 +12,9 @@ from hiveden.api.dtos import (
     ContainerCreateResponse, 
     ContainerConfigResponse,
     NetworkListResponse, 
-    NetworkResponse,
-    TemplateResponse
+    NetworkResponse
 )
-from hiveden.docker.models import ContainerCreate, NetworkCreate, TemplateCreate
-from hiveden.db.manager import DatabaseManager
-from hiveden.db.repositories.templates import ContainerRepository, ContainerAttributeRepository
-import os
+from hiveden.docker.models import ContainerCreate, NetworkCreate
 import json
 
 from hiveden.db.session import get_db_manager
@@ -28,52 +23,6 @@ def get_db():
     return get_db_manager()
 
 router = APIRouter(prefix="/docker", tags=["Docker"])
-
-
-@router.post("/containers/template", response_model=TemplateResponse)
-def create_template(template: TemplateCreate):
-    
-    db_manager = get_db_manager()
-    container_repo = ContainerRepository(db_manager)
-    attr_repo = ContainerAttributeRepository(db_manager)
-    
-    try:
-        # 1. Store in Database
-        # Create main container record
-        new_container_record = container_repo.create({
-            "name": template.name,
-            "type": template.type,
-            "is_container": False,
-            "enabled": template.enabled
-        })
-        
-        if not new_container_record:
-            raise Exception("Failed to create container record in database")
-            
-        # Store attributes (image, command, ports, etc.)
-        attributes = {
-            "image": template.image,
-            "command": json.dumps(template.command) if template.command else None,
-            "env": json.dumps([e.dict() for e in template.env]) if template.env else None,
-            "ports": json.dumps([p.dict() for p in template.ports]) if template.ports else None,
-            "mounts": json.dumps([m.dict() for m in template.mounts]) if template.mounts else None,
-            "labels": json.dumps(template.labels) if template.labels else None,
-            "ingress_config": json.dumps(template.ingress_config.dict()) if template.ingress_config else None
-        }
-        
-        for key, value in attributes.items():
-            if value:
-                attr_repo.create({
-                    "container_id": new_container_record.id,
-                    "name": key,
-                    "value": value
-                })
-
-        return TemplateResponse(data=template)
-    except Exception as e:
-        logger.error(f"Error creating template: {e}\n{traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=str(e))
-
 
 @router.get("/containers", response_model=ContainerListResponse)
 def list_all_containers():
