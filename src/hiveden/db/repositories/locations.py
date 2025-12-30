@@ -1,7 +1,7 @@
-from typing import Optional, List, Dict
+import os.path
+from typing import Optional, List
 from hiveden.db.repositories.base import BaseRepository
 from hiveden.explorer.models import FilesystemLocation
-from datetime import datetime
 
 class LocationRepository(BaseRepository):
     def __init__(self, manager):
@@ -51,7 +51,8 @@ class LocationRepository(BaseRepository):
                     description=row['description'],
                     is_editable=row['is_editable'],
                     created_at=row['created_at'],
-                    updated_at=row['updated_at']
+                    updated_at=row['updated_at'],
+                    exists=(os.path.exists(row['path']) and os.path.isdir(row['path']) and not row['path'].startswith("/hiveden-temp-root"))
                 ) for row in rows
             ]
         finally:
