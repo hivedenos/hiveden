@@ -46,14 +46,14 @@ def get_system_domain_value() -> str:
     # Fallback
     return config.domain
 
-def parse_ingress_from_labels(labels: dict) -> Optional[IngressConfig]:
+def parse_ingress_from_labels(domain: str, labels: dict) -> Optional[IngressConfig]:
     """Reconstruct IngressConfig from Traefik labels."""
     if not labels:
         return None
         
-    # Look for traefik.http.services.<name>.loadbalancer.server.port
     port = None
     router_rule = None
+    entrypoint = None
     
     for k, v in labels.items():
         if "loadbalancer.server.port" in k:
@@ -63,21 +63,17 @@ def parse_ingress_from_labels(labels: dict) -> Optional[IngressConfig]:
                 pass
         if ".rule" in k and "Host(" in v:
             router_rule = v
-            
-    if port and router_rule:
-        # Extract domain from Host(`sub.domain.com`) or Host(`domain.com`)
-        # Simplistic parser
+        if ".entrypoints" in k and "websecure" in v:
+            entrypoint = "https://"
+        elif ".entrypoints" in k and "web" in v:
+            entrypoint = "http://"
+
+    if port and router_rule and entrypoint:
         try:
             domain_part = router_rule.split("Host(`")[1].split("`)")[0]
-            # We assume it is subdomain.domain or just domain
-            # We can't easily split subdomain vs domain without knowing the base domain.
-            # But we return the full host for now as 'domain' field in IngressConfig?
-            # No, IngressConfig expects (domain, port) where domain is likely the base domain?
-            # Let's check docker/actions.py or traefik.py usage.
-            # generate_traefik_labels(domain, port) uses f"Host(`{domain}`)"
-            # So the 'domain' field in IngressConfig implies the FQDN.
-            return IngressConfig(domain=domain_part, port=port)
-        except:
+            return IngressConfig(domain=f"{entrypoint}{domain_part}", port=port)
+        except Exception as e:
+            logger.error(f"Failed to parse ingress from labels: {e}")
             pass
             
     return None
@@ -94,10 +90,10 @@ def get_system_domain():
     for c in containers:
         config_dict = docker_manager.get_container_config(c.Id)
         labels = config_dict.get('labels', {})
-        ingress = parse_ingress_from_labels(labels)
+        ingress = parse_ingress_from_labels(domain, labels)
         
         if ingress:
-            url = f"http://{ingress.domain}" # Assuming http for list
+            url = ingress.domain 
             ingress_list.append(IngressContainerInfo(
                 name=c.Name,
                 id=c.Id,
@@ -110,6 +106,7 @@ def get_system_domain():
 def update_system_domain(req: DomainUpdateRequest):
     """Update system domain and recreate accessible containers."""
     new_domain = req.domain
+    existing_domain = get_system_domain_value()
     
     # 1. Update DB
     db_manager = get_db_manager()
@@ -124,7 +121,7 @@ def update_system_domain(req: DomainUpdateRequest):
     for c in containers:
         config_dict = docker_manager.get_container_config(c.Id)
         labels = config_dict.get('labels', {})
-        current_ingress = parse_ingress_from_labels(labels)
+        current_ingress = parse_ingress_from_labels(existing_domain, labels)
         
         if current_ingress:
             logger.info(f"Updating domain for container {c.Name}...")
