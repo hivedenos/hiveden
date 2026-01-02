@@ -15,7 +15,7 @@ pre_install() {
 
 post_install() {
     # Install all Python dependencies via pip
-    pip install --no-warn-script-location click fastapi uvicorn docker PyYAML psutil lxc paramiko websockets pihole6api yoyo-migrations 2>/dev/null || true
+    pip install --no-warn-script-location click fastapi uvicorn docker PyYAML psutil lxc paramiko websockets pihole6api yoyo-migrations python-multipart 2>/dev/null || true
 }
 
 post_upgrade() {

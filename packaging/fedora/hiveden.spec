@@ -15,6 +15,7 @@ BuildRequires:  python3-pip
 BuildRequires:  python3-build
 Requires:       systemd
 Requires:       python3-psycopg2
+Requires:       lshw
 
 %description
 A CLI tool and REST API for managing your personal server.
@@ -47,7 +48,7 @@ mkdir -p %{buildroot}/opt/hiveden
 %post
 %systemd_post hiveden.service
 # Install all Python dependencies via pip
-pip3 install --no-warn-script-location click fastapi uvicorn docker PyYAML psutil lxc paramiko websockets pihole6api yoyo-migrations 2>/dev/null || true
+pip3 install --no-warn-script-location click fastapi uvicorn docker PyYAML psutil lxc paramiko websockets pihole6api yoyo-migrations python-multipart 2>/dev/null || true
 
 %preun
 %systemd_preun hiveden.service

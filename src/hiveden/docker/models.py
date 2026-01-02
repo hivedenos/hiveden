@@ -19,7 +19,12 @@ class Mount(BaseModel):
     target: str
     type: str = "bind"
     is_app_directory: bool = False
+    read_only: bool = False
 
+class Device(BaseModel):
+    path_on_host: str
+    path_in_container: str
+    cgroup_permissions: str = "rwm"
 
 class IngressConfig(BaseModel):
     domain: str
@@ -33,6 +38,7 @@ class DockerContainer(BaseModel):
     env: Optional[List[EnvVar]] = None
     ports: Optional[List[Port]] = None
     mounts: Optional[List[Mount]] = None
+    devices: Optional[List[Device]] = None
     labels: Optional[Dict[str, str]] = None
     ingress_config: Optional[IngressConfig] = None
 

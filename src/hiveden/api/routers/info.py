@@ -26,6 +26,17 @@ def get_hw_info_endpoint():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/devices", response_model=DataResponse)
+def get_all_devices_endpoint():
+    from hiveden.hwosinfo.devices import get_all_devices
+    try:
+        return DataResponse(data=get_all_devices())
+    except Exception as e:
+        logger.error(f"Error getting system devices: {e}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
 @router.get("/version", response_model=DataResponse)
 def get_version_endpoint():
     from hiveden.version import get_version

@@ -1,5 +1,6 @@
 import traceback
-from fastapi import APIRouter, HTTPException
+from datetime import datetime
+from fastapi import APIRouter, HTTPException, File, UploadFile, Query
 from fastapi.responses import StreamingResponse
 from fastapi.logger import logger
 from typing import Optional
@@ -12,7 +13,8 @@ from hiveden.api.dtos import (
     ContainerCreateResponse, 
     ContainerConfigResponse,
     NetworkListResponse, 
-    NetworkResponse
+    NetworkResponse,
+    FileUploadResponse
 )
 from hiveden.docker.models import ContainerCreate, NetworkCreate
 import json
@@ -38,46 +40,11 @@ def list_all_containers():
 def create_new_container(container: ContainerCreate):
     from hiveden.docker.containers import create_container
     
-    db_manager = get_db_manager()
-    container_repo = ContainerRepository(db_manager)
-    attr_repo = ContainerAttributeRepository(db_manager)
+    # db_manager = get_db_manager()
+    # service_repo = ManagedServiceRepository(db_manager)
     
     try:
-        # 1. Store in Database
-        # Create main container record
-        new_container_record = container_repo.create({
-            "name": container.name,
-            "type": container.type,
-            "is_container": container.is_container,
-            "enabled": container.enabled
-        })
-        
-        if not new_container_record:
-            raise Exception("Failed to create container record in database")
-            
-        # Store attributes (image, command, ports, etc.)
-        # We serialize complex objects to JSON strings for storage
-        attributes = {
-            "image": container.image,
-            "command": json.dumps(container.command) if container.command else None,
-            "env": json.dumps([e.dict() for e in container.env]) if container.env else None,
-            "ports": json.dumps([p.dict() for p in container.ports]) if container.ports else None,
-            "mounts": json.dumps([m.dict() for m in container.mounts]) if container.mounts else None,
-            "labels": json.dumps(container.labels) if container.labels else None,
-            "ingress_config": json.dumps(container.ingress_config.dict()) if container.ingress_config else None
-        }
-        
-        for key, value in attributes.items():
-            if value:
-                attr_repo.create({
-                    "container_id": new_container_record.id,
-                    "name": key,
-                    "value": value
-                })
-
-        # 2. Create and Start in Docker (always, as /template handles DB-only)
-        # Convert DB model back to Docker args format
-        # We use the original request object 'container' as it has the right structure
+        # 1. Create and Start in Docker FIRST (to get ID and verify valid config)
         c = create_container(
             name=container.name,
             image=container.image,
@@ -85,9 +52,39 @@ def create_new_container(container: ContainerCreate):
             env=container.env,
             ports=container.ports,
             mounts=container.mounts,
+            devices=container.devices,
             labels=container.labels,
             ingress_config=container.ingress_config
         )
+
+        # 2. Store in Database
+        # Check if exists (soft deleted or active)
+        # existing = service_repo.get_by_identifier(c.id, "docker")
+        # if not existing:
+        #     # Fallback check by name (since ID changes on recreate)
+        #     # Actually, `c.id` is the new ID.
+        #     # We should probably track by name primarily for Docker services managed by hiveden.
+        #     # But let's stick to storing what we just created.
+            
+        #     # Prepare config JSON
+        #     config_data = {
+        #         "image": container.image,
+        #         "command": container.command,
+        #         "env": [e.dict() for e in container.env] if container.env else None,
+        #         "ports": [p.dict() for p in container.ports] if container.ports else None,
+        #         "mounts": [m.dict() for m in container.mounts] if container.mounts else None,
+        #         "devices": [d.dict() for d in container.devices] if container.devices else None,
+        #         "labels": container.labels,
+        #         "ingress_config": container.ingress_config.dict() if container.ingress_config else None
+        #     }
+
+        #     service_repo.create({
+        #         "identifier": c.id,
+        #         "name": container.name,
+        #         "type": "docker",
+        #         "is_managed": True,
+        #         "config": config_data
+        #     })
         
         # We need to return the Pydantic model, not the raw docker attributes
         from hiveden.docker.containers import get_container
@@ -95,8 +92,6 @@ def create_new_container(container: ContainerCreate):
         
         return ContainerCreateResponse(data=docker_response)
     except Exception as e:
-        # TODO: Rollback DB transaction if Docker creation fails?
-        # For now, we raise 500
         logger.error(f"Error creating new container: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -156,62 +151,60 @@ def get_container_configuration(container_id: str):
 def update_container_configuration(container_id: str, container: ContainerCreate):
     from hiveden.docker.containers import update_container, get_container
     
-    db_manager = get_db_manager()
-    container_repo = ContainerRepository(db_manager)
-    attr_repo = ContainerAttributeRepository(db_manager)
+    # db_manager = get_db_manager()
+    # service_repo = ManagedServiceRepository(db_manager)
     
     try:
-        # Update DB Record
-        # 1. Find existing record by old name (Need to get old name first)
-        # We need the old container info to find the DB record if we rely on name.
-        # But wait, get_container_config(container_id) gives us the current name.
-        # Alternatively, if we tracked container_id in DB, it would be easier.
-        # Assuming we can find by name.
-        
-        # Get old config to know the name
-        from hiveden.docker.containers import get_container_config
-        try:
-            old_config = get_container_config(container_id)
-            old_name = old_config["name"]
-        except Exception:
-            logger.warning(f"Could not retrieve config for container {container_id}, assuming it is gone.")
-            old_name = container.name
-        
-        # Find DB record
-        record = container_repo.find_by_name(old_name)
-        if record:
-            # Update record
-            container_repo.update(record.id, **{
-                "name": container.name,
-                "type": container.type,
-                "is_container": container.is_container,
-                "enabled": container.enabled
-            })
-            
-            # Update attributes (delete old, insert new)
-            attr_repo.delete_by_container_id(record.id)
-            
-            attributes = {
-                "image": container.image,
-                "command": json.dumps(container.command) if container.command else None,
-                "env": json.dumps([e.dict() for e in container.env]) if container.env else None,
-                "ports": json.dumps([p.dict() for p in container.ports]) if container.ports else None,
-                "mounts": json.dumps([m.dict() for m in container.mounts]) if container.mounts else None,
-                "labels": json.dumps(container.labels) if container.labels else None,
-                "ingress_config": json.dumps(container.ingress_config.dict()) if container.ingress_config else None
-            }
-            
-            for key, value in attributes.items():
-                if value:
-                    attr_repo.create({
-                        "container_id": record.id,
-                        "name": key,
-                        "value": value
-                    })
-        
-        # Update Docker
+        # 1. Update Docker
         c = update_container(container_id, container)
         
+        # 2. Update DB
+        # Find existing record by old name or identifier?
+        # Ideally, we should look up by identifier='docker' and name=container.name?
+        # But wait, create_container might change ID if it recreates.
+        # `c.id` is the new ID.
+        
+        # We need to find the OLD record to update it, or mark old as deleted and create new?
+        # Since `update_container` recreates the container, the ID definitely changes.
+        # But logically it's the same service.
+        
+        # Try to find by name since names are unique for docker containers usually
+        # conn = db_manager.get_connection()
+        # try:
+        #     cursor = conn.cursor()
+        #     cursor.execute("SELECT * FROM managed_services WHERE name = %s AND type = 'docker' AND deleted_at IS NULL", (container.name,))
+        #     row = cursor.fetchone()
+            
+        #     config_data = {
+        #         "image": container.image,
+        #         "command": container.command,
+        #         "env": [e.dict() for e in container.env] if container.env else None,
+        #         "ports": [p.dict() for p in container.ports] if container.ports else None,
+        #         "mounts": [m.dict() for m in container.mounts] if container.mounts else None,
+        #         "devices": [d.dict() for d in container.devices] if container.devices else None,
+        #         "labels": container.labels,
+        #         "ingress_config": container.ingress_config.dict() if container.ingress_config else None
+        #     }
+
+        #     if row:
+        #         # Update existing
+        #         service_repo.update(row['id'], 
+        #             identifier=c.id, # Update to new ID
+        #             config=json.dumps(config_data),
+        #             updated_at=datetime.utcnow()
+        #         )
+        #     else:
+        #         # Create new if not found (orphaned docker container?)
+        #         service_repo.create({
+        #             "identifier": c.id,
+        #             "name": container.name,
+        #             "type": "docker",
+        #             "is_managed": True,
+        #             "config": config_data
+        #         })
+        # finally:
+        #     conn.close()
+
         # Return new container info
         docker_response = get_container(c.id)
         return ContainerCreateResponse(data=docker_response)
@@ -310,4 +303,55 @@ def remove_one_network(network_id: str):
         return SuccessResponse(message=f"Network {network_id} removed.")
     except Exception as e:
         logger.error(f"Error removing network {network_id}: {e}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/containers/{container_name}/files", response_model=FileUploadResponse)
+async def upload_container_file(
+    container_name: str,
+    path: str = Query(..., description="Relative path within the container's app directory (e.g., 'config/prometheus.yml')"),
+    file: UploadFile = File(...)
+):
+    """
+    Upload a file to the container's application directory.
+    
+    The file will be saved to: {apps_directory}/{container_name}/{path}
+    
+    Returns the relative path to be used in the mount source.
+    """
+    from hiveden.docker.containers import DockerManager
+    import os
+    import shutil
+    
+    manager = DockerManager()
+    
+    try:
+        # 1. Ensure container directory exists
+        container_dir = manager.ensure_app_directory(container_name)
+        
+        # 2. Prevent directory traversal
+        # Clean the path
+        clean_path = os.path.normpath(path)
+        if clean_path.startswith("..") or os.path.isabs(clean_path):
+             raise HTTPException(status_code=400, detail="Invalid path: Must be relative and inside container directory.")
+             
+        # 3. Construct full target path
+        target_path = os.path.join(container_dir, clean_path)
+        
+        # 4. Ensure parent directories exist
+        os.makedirs(os.path.dirname(target_path), exist_ok=True)
+        
+        # 5. Write file
+        with open(target_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        return FileUploadResponse(
+            message=f"File uploaded successfully to {clean_path}",
+            relative_path=clean_path,
+            absolute_path=target_path
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading file for container {container_name}: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))

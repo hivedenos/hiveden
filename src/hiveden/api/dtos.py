@@ -14,7 +14,7 @@ from hiveden.shares.models import (
     BtrfsShare
 )
 from hiveden.lxc.models import LXCContainer
-from hiveden.hwosinfo.models import OSInfo, HWInfo
+from hiveden.hwosinfo.models import OSInfo, HWInfo, SystemDevices
 from hiveden.explorer.models import FilesystemLocation
 
 
@@ -139,8 +139,12 @@ class DomainInfoResponse(BaseResponse):
 class DomainUpdateRequest(BaseModel):
     domain: str
 
-class DomainUpdateResponse(BaseResponse):
+class DomainUpdateResponse(BaseModel):
     updated_containers: List[str]
+
+class FileUploadResponse(BaseResponse):
+    relative_path: str
+    absolute_path: str
 
 
 class DataResponse(BaseResponse):
@@ -153,6 +157,7 @@ class DataResponse(BaseResponse):
         PackageStatus,
         OSInfo,
         HWInfo,
+        SystemDevices,
         LXCContainer,
         ZFSPool,
         ZFSDataset,
@@ -178,6 +183,7 @@ class DataResponse(BaseResponse):
         List[Dict[str, Any]],
         Dict[str, Any],
         DomainInfoResponse, # Added
-        DomainUpdateResponse # Added
+        DomainUpdateResponse, # Added
+        FileUploadResponse # Added
     ]] = None
 

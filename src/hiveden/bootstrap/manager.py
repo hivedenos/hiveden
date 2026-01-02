@@ -7,6 +7,7 @@ import psycopg2
 from docker import errors
 from hiveden.config.settings import config
 from hiveden.bootstrap.defaults import get_default_containers
+from hiveden.bootstrap.configs import PROMETHEUS_DEFAULT_CONFIG
 from hiveden.docker.containers import DockerManager
 from hiveden.db.session import get_db_manager
 from hiveden.db.repositories.locations import LocationRepository
@@ -19,8 +20,11 @@ def bootstrap_infrastructure():
     
     # 1. Create basic directories (using defaults) so containers can mount them
     ensure_directories(use_db=False)
+
+    # 2. Ensure App Configs
+    ensure_app_configs()
     
-    # 2. Start Containers (Postgres, Redis, Traefik)
+    # 3. Start Containers (Postgres, Redis, Traefik)
     ensure_containers()
 
 def bootstrap_data():
@@ -142,29 +146,37 @@ def ensure_directories(use_db=True):
              except Exception as e:
                  click.echo(f"Error migrating {key}: {e}")
 
+def ensure_app_configs():
+    """Ensure default application configurations exist."""
+    click.echo("Checking application configurations...")
+    
+    manager = DockerManager()
+    app_root = manager._resolve_app_directory()
+
+    # Prometheus
+    prometheus_dir = os.path.join(app_root, "prometheus")
+    if not os.path.exists(prometheus_dir):
+        try:
+            os.makedirs(prometheus_dir, exist_ok=True)
+        except OSError as e:
+            click.echo(f"Error creating prometheus directory: {e}")
+            return
+
+    prometheus_config_path = os.path.join(prometheus_dir, "prometheus.yml")
+    if not os.path.exists(prometheus_config_path):
+        try:
+            with open(prometheus_config_path, "w") as f:
+                f.write(PROMETHEUS_DEFAULT_CONFIG)
+            click.echo(f"Created default prometheus config at {prometheus_config_path}")
+        except OSError as e:
+            click.echo(f"Error writing prometheus config: {e}")
+
 def ensure_containers():
     """Ensure default containers are running."""
-    # We should also pull network name and app_directory from DB or Config?
-    # For now, keeping as is, but eventually DockerManager should query DB for its config.
     manager = DockerManager(network_name=config.docker_network_name)
     defaults = get_default_containers()
     
-    # Try to fetch app root from DB if possible, but don't fail if DB is down (bootstrap phase 1)
-    app_root = config.app_directory
-    try:
-        db_manager = get_db_manager()
-        # Simple check without migration logic to see if we can get a connection
-        # If this fails, we are likely in Phase 1, so use defaults.
-        # Actually, ensure_containers is called in Phase 1. DB is NOT ready.
-        # So we MUST use config defaults here.
-        # But wait, if user changed path in DB, and we restart server, we want containers to respect that.
-        # So: catch exception.
-        repo = LocationRepository(db_manager)
-        apps_location = repo.get_by_key('apps')
-        if apps_location:
-            app_root = apps_location.path
-    except Exception:
-        pass # Database likely not ready, use default
+    app_root = manager._resolve_app_directory()
     
     for container_def in defaults:
         try:

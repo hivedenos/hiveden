@@ -19,6 +19,35 @@ class DockerManager:
         self.network_name = network_name
         self.client = client
 
+    def _resolve_app_directory(self):
+        """Resolve the effective application directory, preferring DB configuration."""
+        app_root = app_config.app_directory
+        try:
+            from hiveden.db.session import get_db_manager
+            from hiveden.db.repositories.locations import LocationRepository
+            
+            db_manager = get_db_manager()
+            repo = LocationRepository(db_manager)
+            apps_location = repo.get_by_key('apps')
+            if apps_location:
+                app_root = apps_location.path
+        except Exception:
+            pass
+        return app_root
+
+    def ensure_app_directory(self, container_name):
+        """Ensure the container's application directory exists."""
+        app_root = self._resolve_app_directory()
+        container_dir = os.path.join(app_root, container_name)
+        if not os.path.exists(container_dir):
+            try:
+                os.makedirs(container_dir, exist_ok=True)
+                print(f"Created app directory: {container_dir}")
+            except OSError as e:
+                print(f"Error creating app directory {container_dir}: {e}")
+                raise
+        return container_dir
+
     def extract_ip(self, container_attrs):
         """Extract IP address from container attributes."""
         ip_address = None
@@ -40,6 +69,7 @@ class DockerManager:
         env=None,
         ports=None,
         mounts=None,
+        devices=None,
         labels=None,
         ingress_config=None,
         app_directory=None,
@@ -48,8 +78,8 @@ class DockerManager:
         """Create a new Docker container and connect it to the hiveden network."""
         # Use instance network_name if not provided, though argument overrides it
         target_network = network_name or self.network_name
-        # Use provided app_directory or fallback to config
-        effective_app_dir = app_directory or app_config.app_directory
+        # Use provided app_directory or resolve it
+        effective_app_dir = app_directory or self._resolve_app_directory()
 
         if not image_exists(image):
             print(f"Image '{image}' not found locally. Pulling from registry...")
@@ -113,7 +143,15 @@ class DockerManager:
                         except OSError as e:
                             print(f"Error creating app directory {source_path}: {e}")
 
-                volumes[source_path] = {"bind": mount.target, "mode": "rw"}
+                mode = "ro" if getattr(mount, "read_only", False) else "rw"
+                volumes[source_path] = {"bind": mount.target, "mode": mode}
+
+        device_requests = []
+        if devices:
+            for device in devices:
+                # Format: /host:/container:rwm
+                device_str = f"{device.path_on_host}:{device.path_in_container}:{device.cgroup_permissions}"
+                device_requests.append(device_str)
 
         try:
             container = self.client.containers.get(container_name)
@@ -126,6 +164,7 @@ class DockerManager:
                 environment=environment,
                 ports=port_bindings,
                 volumes=volumes,
+                devices=device_requests,
                 restart_policy={"Name": "always"},
                 **kwargs,
             )
@@ -137,6 +176,7 @@ class DockerManager:
                 environment=environment,
                 ports=port_bindings,
                 volumes=volumes,
+                devices=device_requests,
                 restart_policy={"Name": "always"},
                 **kwargs,
             )
@@ -359,18 +399,37 @@ class DockerManager:
         # Mounts: Binds ["/host:/container:rw"] -> [{"source": "/host", "target": "/container"}]
         mounts = []
         binds = host_config.get('Binds') or []
+        effective_app_dir = self._resolve_app_directory()
+        
         for b in binds:
             parts = b.split(':')
             if len(parts) >= 2:
                 source = parts[0]
                 target = parts[1]
+                read_only = False
+                
+                if len(parts) >= 3:
+                     mode = parts[2]
+                     if 'ro' in mode.split(','):
+                         read_only = True
+
                 is_app_dir = False
 
-                if source == app_config.app_directory or source.startswith(os.path.join(app_config.app_directory, "")):
+                if source == effective_app_dir or source.startswith(os.path.join(effective_app_dir, "")):
                     is_app_dir = True
-                    source = os.path.relpath(source, app_config.app_directory)
+                    source = os.path.relpath(source, effective_app_dir)
 
-                mounts.append({'source': source, 'target': target, 'is_app_directory': is_app_dir})
+                mounts.append({'source': source, 'target': target, 'is_app_directory': is_app_dir, 'read_only': read_only})
+
+        # Devices: [{"PathOnHost": "...", "PathInContainer": "...", "CgroupPermissions": "..."}]
+        devices = []
+        host_devices = host_config.get('Devices') or []
+        for d in host_devices:
+            devices.append({
+                'path_on_host': d.get('PathOnHost'),
+                'path_in_container': d.get('PathInContainer'),
+                'cgroup_permissions': d.get('CgroupPermissions', 'rwm')
+            })
 
         return {
             "name": c.name.lstrip('/'),
@@ -379,6 +438,7 @@ class DockerManager:
             "env": env,
             "ports": ports,
             "mounts": mounts,
+            "devices": devices,
             "labels": config.get('Labels'),
             "is_container": True,
             "enabled": True,
@@ -410,6 +470,7 @@ class DockerManager:
             env=get_val(config, 'env'),
             ports=get_val(config, 'ports'),
             mounts=get_val(config, 'mounts'),
+            devices=get_val(config, 'devices'),
             labels=get_val(config, 'labels'),
             ingress_config=get_val(config, 'ingress_config'),
             app_directory=app_directory

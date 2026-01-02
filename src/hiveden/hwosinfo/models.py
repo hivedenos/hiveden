@@ -1,5 +1,6 @@
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from pydantic import BaseModel
+from hiveden.storage.models import Disk
 
 class OSInfo(BaseModel):
     system: str
@@ -39,3 +40,32 @@ class HWInfo(BaseModel):
     memory: Dict
     disk: Dict
     network: NetworkInfo
+
+class GenericDevice(BaseModel):
+    id: str
+    name: str # product name usually
+    vendor: Optional[str] = None
+    product: Optional[str] = None
+    description: Optional[str] = None
+    driver: Optional[str] = None
+    bus_info: Optional[str] = None
+    
+    # Detailed fields
+    logical_name: Optional[str] = None
+    version: Optional[str] = None
+    serial: Optional[str] = None
+    capacity: Optional[int] = None
+    clock: Optional[int] = None
+    capabilities: Optional[Dict[str, Any]] = None
+    configuration: Optional[Dict[str, Any]] = None
+    
+    # Raw children or extra info if needed, but keeping it flat is better for UI
+    
+class SystemDevices(BaseModel):
+    summary: Dict[str, Any]
+    storage: List[Disk]
+    video: List[GenericDevice]
+    usb: List[GenericDevice]
+    network: List[GenericDevice]
+    multimedia: List[GenericDevice]
+    other: List[GenericDevice]
