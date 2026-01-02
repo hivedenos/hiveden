@@ -127,8 +127,12 @@ jobs:
             # Update PKGBUILD to use local file
             cd packaging/arch
             sed -i "s|https://github.com/hiveden/hiveden/archive/v\$pkgver.tar.gz|file://\$PWD/hiveden-\$pkgver.tar.gz|g" PKGBUILD
+            
+            # Copy source files to current directory (packaging/arch) where makepkg looks for them
+            cp ../hiveden.service .
+            cp ../hiveden.default.yaml .
 
-            makepkg -sf
+            makepkg -sf --noconfirm
           '
       - name: Upload artifact
         uses: actions/upload-artifact@v4
