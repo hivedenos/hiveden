@@ -73,6 +73,7 @@ class DockerManager:
         labels=None,
         ingress_config=None,
         app_directory=None,
+        privileged=False,
         **kwargs,
     ):
         """Create a new Docker container and connect it to the hiveden network."""
@@ -166,6 +167,7 @@ class DockerManager:
                 volumes=volumes,
                 devices=device_requests,
                 restart_policy={"Name": "always"},
+                privileged=privileged,
                 **kwargs,
             )
             print(f"Container '{container_name}' recreated.")
@@ -178,6 +180,7 @@ class DockerManager:
                 volumes=volumes,
                 devices=device_requests,
                 restart_policy={"Name": "always"},
+                privileged=privileged,
                 **kwargs,
             )
             print(f"Container '{container_name}' created.")
@@ -440,6 +443,7 @@ class DockerManager:
             "mounts": mounts,
             "devices": devices,
             "labels": config.get('Labels'),
+            "privileged": host_config.get('Privileged', False),
             "is_container": True,
             "enabled": True,
             "type": "docker"
@@ -473,6 +477,7 @@ class DockerManager:
             devices=get_val(config, 'devices'),
             labels=get_val(config, 'labels'),
             ingress_config=get_val(config, 'ingress_config'),
+            privileged=get_val(config, 'privileged') or False,
             app_directory=app_directory
         )
 

@@ -54,7 +54,8 @@ def create_new_container(container: ContainerCreate):
             mounts=container.mounts,
             devices=container.devices,
             labels=container.labels,
-            ingress_config=container.ingress_config
+            ingress_config=container.ingress_config,
+            privileged=container.privileged or False
         )
 
         # 2. Store in Database

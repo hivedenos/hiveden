@@ -41,6 +41,7 @@ class DockerContainer(BaseModel):
     devices: Optional[List[Device]] = None
     labels: Optional[Dict[str, str]] = None
     ingress_config: Optional[IngressConfig] = None
+    privileged: Optional[bool] = False
 
 class ContainerCreate(DockerContainer):
     is_container: bool = True
@@ -57,6 +58,7 @@ class NetworkCreate(BaseModel):
 
 class HostConfig(BaseModel):
     NetworkMode: str
+    Privileged: bool = False
 
 class NetworkSettings(BaseModel):
     Ports: Dict
