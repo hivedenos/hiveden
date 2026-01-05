@@ -58,8 +58,16 @@ def apply(config):
 @click.option('--db-url', help='The database URL. Defaults to environment variables.')
 def server(host, port, db_url):
     """Run the FastAPI server."""
+    import logging
     import uvicorn
     from hiveden.bootstrap.manager import bootstrap_infrastructure, bootstrap_data
+    
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
     
     # 1. Bootstrap Infrastructure (Directories, Core Containers like DB)
     bootstrap_infrastructure()
@@ -73,3 +81,4 @@ def server(host, port, db_url):
 
     from hiveden.api.server import app
     uvicorn.run(app, host=host, port=port, log_level="debug")
+

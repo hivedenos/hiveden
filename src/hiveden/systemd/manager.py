@@ -1,3 +1,4 @@
+from fastapi.logger import logger
 import subprocess
 import shutil
 from typing import List, Optional
@@ -7,7 +8,12 @@ from hiveden.systemd.registry import MANAGED_SERVICES
 class SystemdManager:
     def _resolve_service_name(self, service_key: str) -> Optional[str]:
         """Resolves the actual systemd unit name from the registry list."""
-        candidates = MANAGED_SERVICES.get(service_key, [service_key])
+        # check if service_key is in MANAGED_SERVICES
+        if service_key not in MANAGED_SERVICES.keys():
+            logger.info(f"Service {service_key} not found in registry, candidates: {MANAGED_SERVICES.keys()}")
+            return None
+        
+        candidates = MANAGED_SERVICES[service_key]
         
         # If it's a direct unit name (ending in .service), check if it exists directly
         if service_key.endswith(".service"):
@@ -22,6 +28,8 @@ class SystemdManager:
                     ["systemctl", "show", "-p", "LoadState", unit], 
                     capture_output=True, text=True
                 )
+
+                logger.info(f"Resolved service name: {unit}, candidates: {candidates}, service name: {service_key}, output: {res.stdout}")
                 if "LoadState=loaded" in res.stdout:
                     return unit
                 elif "LoadState=not-found" in res.stdout:
@@ -33,6 +41,7 @@ class SystemdManager:
     def get_service_status(self, service_name: str) -> Optional[SystemdServiceStatus]:
         """Get comprehensive status of a service."""
         unit = self._resolve_service_name(service_name)
+        logger.info(f"Resolved service name: {unit}, service name: {service_name}")
         if not unit:
             # Try to return a stub if it's a known managed service but not installed
             if service_name in MANAGED_SERVICES:
@@ -65,6 +74,8 @@ class SystemdManager:
                     data["UnitFileState"] = res_enabled.stdout.strip()
                 except:
                     data["UnitFileState"] = "unknown"
+
+            logger.info(f"Service status: {data}, service name: {service_name}, unit: {unit}")
 
             return SystemdServiceStatus(
                 name=service_name, # Return the API key name, or unit? Better to return unit name if resolved? 
