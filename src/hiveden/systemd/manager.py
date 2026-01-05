@@ -1,4 +1,6 @@
-from fastapi.logger import logger
+import logging
+# from fastapi.logger import logger # Deprecated
+logger = logging.getLogger(__name__)
 import subprocess
 import shutil
 from typing import List, Optional
@@ -90,7 +92,7 @@ class SystemdManager:
                 since=data.get("ActiveEnterTimestamp")
             )
         except Exception as e:
-            print(f"Error getting status for {unit}: {e}")
+            logger.error(f"Error getting status for {unit}: {e}")
             return None
 
     def list_services(self) -> List[SystemdServiceStatus]:

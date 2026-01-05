@@ -156,6 +156,12 @@ class DNSConfigResponse(BaseResponse):
 class DNSUpdateRequest(BaseModel):
     api_key: str
 
+class SystemdServiceResponse(BaseResponse):
+    data: Optional[SystemdServiceStatus] = None
+
+class SystemdServiceListResponse(BaseResponse):
+    data: List[SystemdServiceStatus]
+
 class DataResponse(BaseResponse):
     data: Optional[Union[
         DockerContainer,
@@ -191,10 +197,8 @@ class DataResponse(BaseResponse):
         List[str],
         List[Dict[str, Any]],
         Dict[str, Any],
-        DomainInfoResponse, # Added
-        DomainUpdateResponse, # Added
-        DNSConfigResponse, # Added
-        SystemdServiceStatus, # Added
-        List[SystemdServiceStatus] # Added
+        DomainInfoResponse,
+        DomainUpdateResponse,
+        DNSConfigResponse
     ]] = None
 
