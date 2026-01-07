@@ -391,3 +391,75 @@ def update_system_location(key: str, req: UpdateLocationRequest, background_task
     background_tasks.add_task(perform_location_update, key, new_path, old_path)
     
     return SuccessResponse(message=f"Update started. Moving data from {old_path} to {new_path}")
+
+@router.get("/locations/tree", response_model=LocationListResponse)
+def get_comprehensive_locations():
+    """
+    Retrieve a comprehensive list of all system locations including:
+    1. All Btrfs shares
+    2. All system storage locations
+    3. Expanded directories for the 'apps' location (2 levels deep)
+    """
+    locations = []
+    
+    # 1. Btrfs Shares
+    try:
+        from hiveden.shares.btrfs import BtrfsManager
+        btrfs_shares = BtrfsManager().list_shares()
+        for share in btrfs_shares:
+            locations.append(FilesystemLocation(
+                label=share.name,
+                name=share.name,
+                path=share.mount_path,
+                type="share_btrfs"
+            ))
+    except Exception as e:
+        logger.warning(f"Failed to fetch Btrfs shares: {e}")
+
+    # 2. System Locations (DB)
+    db_manager = get_db_manager()
+    repo = LocationRepository(db_manager)
+    sys_locs = repo.get_system_locations()
+    
+    # Add system locations, but mark 'apps' specifically to avoid duplication if we want
+    # Actually prompt says "All storage locations", so we add them.
+    locations.extend(sys_locs)
+    
+    # 3. Apps Expansion
+    # Find 'apps' location
+    apps_loc = next((l for l in sys_locs if l.key == 'apps'), None)
+    
+    if apps_loc and os.path.exists(apps_loc.path):
+        try:
+            # Scan Level 1 (e.g., apps/radarr)
+            with os.scandir(apps_loc.path) as it:
+                for entry in it:
+                    if entry.is_dir() and not entry.name.startswith('.'):
+                        # Add Level 1 directory
+                        l1_path = entry.path
+                        locations.append(FilesystemLocation(
+                            label=entry.name,
+                            name=entry.name,
+                            path=l1_path,
+                            type="app_directory",
+                            key=f"apps/{entry.name}" # Synthetic key for frontend reference
+                        ))
+                        
+                        # Scan Level 2 (e.g., apps/radarr/config)
+                        try:
+                            with os.scandir(l1_path) as it2:
+                                for sub in it2:
+                                    if sub.is_dir() and not sub.name.startswith('.'):
+                                        locations.append(FilesystemLocation(
+                                            label=f"{entry.name}/{sub.name}",
+                                            name=f"{entry.name}/{sub.name}",
+                                            path=sub.path,
+                                            type="app_subdirectory",
+                                            key=f"apps/{entry.name}/{sub.name}" # Synthetic key
+                                        ))
+                        except OSError as e:
+                            logger.warning(f"Error scanning app subdirectory {l1_path}: {e}")
+        except OSError as e:
+            logger.warning(f"Error scanning apps directory {apps_loc.path}: {e}")
+
+    return LocationListResponse(data=locations)
