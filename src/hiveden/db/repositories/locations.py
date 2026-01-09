@@ -7,6 +7,12 @@ class LocationRepository(BaseRepository):
     def __init__(self, manager):
         super().__init__(manager, 'filesystem_locations', model_class=FilesystemLocation)
 
+    def _to_model(self, row: dict) -> FilesystemLocation:
+        # Augment row with 'name' (aliased from label) if missing
+        if 'label' in row and 'name' not in row:
+            row['name'] = row['label']
+        return super()._to_model(row)
+
     def get_by_key(self, key: str) -> Optional[FilesystemLocation]:
         conn = self.manager.get_connection()
         try:

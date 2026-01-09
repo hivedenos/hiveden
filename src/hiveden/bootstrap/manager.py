@@ -119,7 +119,8 @@ def ensure_directories(use_db=True):
         temp_path = os.path.join(TEMP_ROOT, key)
         
         # Ensure target exists
-        if not os.path.exists(target_path):
+        target_exists = os.path.exists(target_path)
+        if not target_exists:
             try:
                 os.makedirs(target_path, exist_ok=True)
                 click.echo(f"Created directory: {target_path}")
@@ -127,13 +128,13 @@ def ensure_directories(use_db=True):
                 click.echo(f"Error creating directory {target_path}: {e}")
              
         # Migration logic
-        # We only migrate if we are checking against DB, as that implies a potential user change.
-        # During Phase 1 (use_db=False), target is always default, so mismatch is unlikely unless ENV changed.
+        # We only migrate from TEMP_ROOT (defaults) if the target directory did not exist.
+        # This prevents overwriting or merging data if the user has already pointed to an existing directory.
         abs_target = os.path.abspath(target_path)
         abs_temp = os.path.abspath(temp_path)
         
-        if abs_target != abs_temp and os.path.exists(abs_temp):
-             click.echo(f"Migrating {key} from {abs_temp} to {abs_target}...")
+        if not target_exists and abs_target != abs_temp and os.path.exists(abs_temp):
+             click.echo(f"Migrating defaults for {key} from {abs_temp} to {abs_target}...")
              try:
                  for item in os.listdir(abs_temp):
                      s = os.path.join(abs_temp, item)
@@ -144,7 +145,7 @@ def ensure_directories(use_db=True):
                          shutil.move(s, d)
                          click.echo(f"Moved {item}")
              except Exception as e:
-                 click.echo(f"Error migrating {key}: {e}")
+                 click.echo(f"Error migrating defaults for {key}: {e}")
 
 def ensure_app_configs():
     """Ensure default application configurations exist."""

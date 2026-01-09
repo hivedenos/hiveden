@@ -12,14 +12,15 @@ from hiveden.docker.containers import DockerManager
 from hiveden.config.settings import config
 from hiveden.config.utils.domain import get_system_domain_value
 from hiveden.api.dtos import (
-    SuccessResponse, 
-    LocationListResponse, 
-    DomainInfoResponse, 
-    DomainUpdateRequest, 
-    DomainUpdateResponse, 
+    SuccessResponse,
+    LocationListResponse,
+    DomainInfoResponse,
+    DomainUpdateRequest,
+    DomainUpdateResponse,
     IngressContainerInfo,
     DNSConfigResponse,
-    DNSUpdateRequest
+    DNSUpdateRequest,
+    UpdateLocationRequest
 )
 from hiveden.explorer.models import FilesystemLocation
 from hiveden.docker.models import IngressConfig
@@ -27,18 +28,15 @@ from hiveden.docker.models import IngressConfig
 router = APIRouter(prefix="/system", tags=["System"])
 logger = logging.getLogger(__name__)
 
-class UpdateLocationRequest(BaseModel):
-    new_path: str
-
 def parse_ingress_from_labels(domain: str, labels: dict) -> Optional[IngressConfig]:
     """Reconstruct IngressConfig from Traefik labels."""
     if not labels:
         return None
-        
+
     port = None
     router_rule = None
     entrypoint = None
-    
+
     for k, v in labels.items():
         if "loadbalancer.server.port" in k:
             try:
@@ -61,31 +59,31 @@ def parse_ingress_from_labels(domain: str, labels: dict) -> Optional[IngressConf
         except Exception as e:
             logger.error(f"Failed to parse ingress from labels: {e}")
             pass
-            
+
     return None
 
 @router.get("/domain", response_model=DomainInfoResponse)
 def get_system_domain():
     """Get the current system domain and accessible containers."""
     domain = get_system_domain_value()
-    
+
     docker_manager = DockerManager()
     containers = docker_manager.list_containers(only_managed=True)
-    
+
     ingress_list = []
     for c in containers:
         config_dict = docker_manager.get_container_config(c.Id)
         labels = config_dict.get('labels', {})
         ingress = parse_ingress_from_labels(domain, labels)
-        
+
         if ingress:
-            url = ingress.domain 
+            url = ingress.domain
             ingress_list.append(IngressContainerInfo(
                 name=c.Name,
                 id=c.Id,
                 url=url
             ))
-            
+
     return DomainInfoResponse(domain=domain, containers=ingress_list)
 
 @router.get("/dns", response_model=DNSConfigResponse)
@@ -96,7 +94,7 @@ def get_dns_config():
     db_manager = get_db_manager()
     module_repo = ModuleRepository(db_manager)
     config_repo = ConfigRepository(db_manager)
-    
+
     # 1. Get Domain and API Key from DB
     dns_domain = None
     api_key = None
@@ -107,29 +105,29 @@ def get_dns_config():
             cfg_domain = config_repo.get_by_module_and_key(core_module.id, 'dns.domain')
             if cfg_domain:
                 dns_domain = cfg_domain['value']
-            
+
             # Get API Key
             cfg_key = config_repo.get_by_module_and_key(core_module.id, 'dns.api_key')
             if cfg_key:
                 api_key = cfg_key['value']
-                
+
     except Exception as e:
         logger.warning(f"Failed to fetch DNS config from DB: {e}")
 
     # 2. Check for Pi-hole Container
     docker_manager = DockerManager()
     containers = docker_manager.list_containers(all=False) # Only running containers
-    
+
     pihole_enabled = False
     container_id = None
-    
+
     for c in containers:
         # Check image name for 'pihole'
         if c.Image and "pihole" in c.Image.lower():
             pihole_enabled = True
             container_id = c.Id
             break
-            
+
     return DNSConfigResponse(
         enabled=pihole_enabled,
         domain=dns_domain,
@@ -144,7 +142,7 @@ def update_dns_config(req: DNSUpdateRequest):
     """
     db_manager = get_db_manager()
     config_repo = ConfigRepository(db_manager)
-    
+
     try:
         config_repo.set_value('core', 'dns.api_key', req.api_key)
         return SuccessResponse(message="DNS configuration updated successfully.")
@@ -157,63 +155,63 @@ def update_system_domain(req: DomainUpdateRequest):
     """Update system domain and recreate accessible containers."""
     new_domain = req.domain
     existing_domain = get_system_domain_value()
-    
+
     # 1. Update DB
     db_manager = get_db_manager()
     config_repo = ConfigRepository(db_manager)
     config_repo.set_value('core', 'domain', new_domain)
-    
+
     # 2. Recreate Containers
     docker_manager = DockerManager()
     containers = docker_manager.list_containers(only_managed=True)
     updated_list = []
-    
+
     for c in containers:
         config_dict = docker_manager.get_container_config(c.Id)
         labels = config_dict.get('labels', {})
         current_ingress = parse_ingress_from_labels(existing_domain, labels)
-        
+
         if current_ingress:
             logger.info(f"Updating domain for container {c.Name}...")
-            
+
             # Determine new FQDN
             # Heuristic: If old was "plex.old.com", and new domain is "new.com",
             # we want "plex.new.com".
             # We need the subdomain.
             old_fqdn = current_ingress.domain
-            
-            # Get current system domain to strip it? 
+
+            # Get current system domain to strip it?
             # Or just assume the first part is subdomain?
             # Safer: Look at container name or 'hiveden.service' label if we had one.
             # Fallback: container name.
             # E.g. Name: plex -> plex.new_domain
-            
+
             # Assumption: We want {container_name}.{new_domain}
             # Exceptions: Traefik dashboard?
-            
+
             # Let's use container name as subdomain default
             subdomain = c.Name.lower()
             new_fqdn = f"{subdomain}.{new_domain}"
-            
+
             # Create new IngressConfig
             new_ingress_config = IngressConfig(
                 domain=new_fqdn,
                 port=current_ingress.port
             )
-            
+
             # Inject into config_dict for update_container
             config_dict['ingress_config'] = new_ingress_config
-            
+
             # Update
             try:
                 docker_manager.update_container(c.Id, config_dict)
                 updated_list.append(c.Name)
             except Exception as e:
                 logger.error(f"Failed to update container {c.Name}: {e}")
-                
+
     return DomainUpdateResponse(
-        status="success", 
-        message="Domain updated successfully", 
+        status="success",
+        message="Domain updated successfully",
         updated_containers=updated_list
     )
 
@@ -233,7 +231,7 @@ def perform_location_update(key: str, new_path: str, old_path: str):
     of moving files and recreating containers.
     """
     docker_manager = DockerManager()
-    
+
     try:
         logger.info(f"Starting location update for '{key}': {old_path} -> {new_path}")
 
@@ -241,15 +239,15 @@ def perform_location_update(key: str, new_path: str, old_path: str):
         # We need to find containers that use this path.
         # If key is 'apps', create_container handles it via app_directory param.
         # If key is 'movies' etc., they are likely bind mounts.
-        
+
         affected_containers = []
         all_containers = docker_manager.list_containers(only_managed=True)
-        
+
         for c in all_containers:
             config = docker_manager.get_container_config(c.Id)
             mounts = config.get('mounts', [])
             is_affected = False
-            
+
             # Check if container uses this path
             if key == 'apps':
                 # For apps, we check if any mount is marked as app_directory relative
@@ -269,7 +267,7 @@ def perform_location_update(key: str, new_path: str, old_path: str):
                     if not m.get('is_app_directory') and source and source.startswith(old_path):
                         is_affected = True
                         break
-            
+
             if is_affected:
                 affected_containers.append((c.Id, config))
 
@@ -286,7 +284,7 @@ def perform_location_update(key: str, new_path: str, old_path: str):
         # 3. Move Data
         # Ensure parent of new_path exists
         os.makedirs(os.path.dirname(new_path), exist_ok=True)
-        
+
         if os.path.exists(old_path):
             if os.path.exists(new_path):
                 # If target exists and is empty, remove it to allow move
@@ -328,7 +326,7 @@ def perform_location_update(key: str, new_path: str, old_path: str):
         db_manager = get_db_manager()
         repo = LocationRepository(db_manager)
         # We assume the caller already updated the DB or passed the intention.
-        # Actually, for consistency, let's update DB here if not done, 
+        # Actually, for consistency, let's update DB here if not done,
         # BUT the API endpoint logic below updates it first.
         # So we just proceed to step 5.
 
@@ -336,10 +334,10 @@ def perform_location_update(key: str, new_path: str, old_path: str):
         for cid, config in affected_containers:
             try:
                 logger.info(f"Recreating container {config.get('name')}...")
-                
+
                 # If key is apps, we pass the new app_directory
                 app_dir = new_path if key == 'apps' else None
-                
+
                 # If key is NOT apps, we might need to patch the mounts in the config
                 # because `create_container` only auto-resolves `is_app_directory` mounts.
                 # Explicit absolute bind mounts (like /hiveden/movies) need manual update in the config object.
@@ -373,24 +371,36 @@ def update_system_location(key: str, req: UpdateLocationRequest, background_task
     """
     db_manager = get_db_manager()
     repo = LocationRepository(db_manager)
-    
+
     location = repo.get_by_key(key)
-    if not location:
+    if location is None:
         raise HTTPException(status_code=404, detail="Location key not found")
-        
+
     old_path = location.path
     new_path = req.new_path
-    
+
     if old_path == new_path:
         return SuccessResponse(message="Path is unchanged")
 
     # Update DB immediately to reflect intent
     repo.update(location.id, path=new_path)
-    
-    # Trigger background task
-    background_tasks.add_task(perform_location_update, key, new_path, old_path)
-    
-    return SuccessResponse(message=f"Update started. Moving data from {old_path} to {new_path}")
+
+    msg = f"Path updated to {new_path}."
+
+    if req.should_migrate_data:
+        # Trigger background task
+        background_tasks.add_task(perform_location_update, key, new_path, old_path)
+        msg += f" Data migration started from {old_path}."
+    else:
+        # If not migrating, ensure the directory exists so startup logic doesn't try to migrate defaults into it
+        if not os.path.exists(new_path):
+            try:
+                os.makedirs(new_path, exist_ok=True)
+                msg += " New directory created."
+            except Exception as e:
+                logger.error(f"Failed to create directory {new_path}: {e}")
+
+    return SuccessResponse(message=msg)
 
 @router.get("/locations/tree", response_model=LocationListResponse)
 def get_comprehensive_locations():
@@ -401,7 +411,7 @@ def get_comprehensive_locations():
     3. Expanded directories for the 'apps' location (2 levels deep)
     """
     locations = []
-    
+
     # 1. Btrfs Shares
     try:
         from hiveden.shares.btrfs import BtrfsManager
@@ -420,15 +430,15 @@ def get_comprehensive_locations():
     db_manager = get_db_manager()
     repo = LocationRepository(db_manager)
     sys_locs = repo.get_system_locations()
-    
+
     # Add system locations, but mark 'apps' specifically to avoid duplication if we want
     # Actually prompt says "All storage locations", so we add them.
     locations.extend(sys_locs)
-    
+
     # 3. Apps Expansion
     # Find 'apps' location
     apps_loc = next((l for l in sys_locs if l.key == 'apps'), None)
-    
+
     if apps_loc and os.path.exists(apps_loc.path):
         try:
             # Scan Level 1 (e.g., apps/radarr)
@@ -444,7 +454,7 @@ def get_comprehensive_locations():
                             type="app_directory",
                             key=f"apps/{entry.name}" # Synthetic key for frontend reference
                         ))
-                        
+
                         # Scan Level 2 (e.g., apps/radarr/config)
                         try:
                             with os.scandir(l1_path) as it2:

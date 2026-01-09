@@ -146,6 +146,10 @@ class DomainUpdateRequest(BaseModel):
 class DomainUpdateResponse(BaseModel):
     updated_containers: List[str]
 
+class UpdateLocationRequest(BaseModel):
+    new_path: str
+    should_migrate_data: bool = False
+
 class FileUploadResponse(BaseResponse):
     relative_path: str
     absolute_path: str
