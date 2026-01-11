@@ -25,7 +25,7 @@ from hiveden.docker.models import ContainerCreate, NetworkCreate
 def get_db():
     return get_db_manager()
 
-router = APIRouter(prefix="/docker", tags=["Docker"])
+router = APIRouter(tags=["Docker"])
 
 @router.get("/containers", response_model=ContainerListResponse)
 def list_all_containers():
