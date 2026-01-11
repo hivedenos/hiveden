@@ -191,12 +191,17 @@ class DatabaseListResponse(BaseResponse):
 class DatabaseUserListResponse(BaseResponse):
     data: List[DatabaseUser]
 
+class ImageContainerInfo(BaseModel):
+    id: str
+    name: str
+
 class DockerImage(BaseModel):
     id: str
     tags: List[str]
     created: str
     size: int
     labels: Optional[Dict[str, str]] = None
+    containers: Optional[List[ImageContainerInfo]] = None
 
 class ImageListResponse(BaseResponse):
     data: List[DockerImage]

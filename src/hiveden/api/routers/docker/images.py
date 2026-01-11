@@ -10,9 +10,11 @@ from hiveden.api.dtos import (
     ImageListResponse,
     ImageLayerListResponse,
     DockerImage,
-    ImageLayer
+    ImageLayer,
+    ImageContainerInfo
 )
 from hiveden.docker.images import DockerImageManager
+from hiveden.docker.containers import DockerManager
 
 router = APIRouter(tags=["Docker Images"])
 
@@ -55,16 +57,36 @@ def list_images():
         manager = DockerImageManager()
         images = manager.list_images()
         
+        # Fetch all containers to map them to images
+        container_manager = DockerManager()
+        containers = container_manager.list_containers(all=True)
+        
+        # Create a map: ImageID -> List[ImageContainerInfo]
+        image_container_map = {}
+        for c in containers:
+            if c.ImageID not in image_container_map:
+                image_container_map[c.ImageID] = []
+            
+            image_container_map[c.ImageID].append(
+                ImageContainerInfo(id=c.Id, name=c.Name)
+            )
+
         data = []
         for img in images:
             # attrs['Created'] is usually an int timestamp or ISO string depending on docker version/api
             # Docker SDK usually returns Image objects.
+            
+            # Get containers for this image
+            # img.id usually starts with sha256:...
+            associated_containers = image_container_map.get(img.id, [])
+
             data.append(DockerImage(
                 id=img.id,
                 tags=img.tags,
                 created=str(img.attrs.get('Created', '')),
                 size=img.attrs.get('Size', 0),
-                labels=img.labels
+                labels=img.labels,
+                containers=associated_containers
             ))
             
         return ImageListResponse(data=data)
