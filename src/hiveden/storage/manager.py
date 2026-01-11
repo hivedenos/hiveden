@@ -152,6 +152,68 @@ class StorageManager:
         job_manager = JobManager()
         return job_manager.create_job(full_command)
 
+    def add_disk_to_raid(self, md_device: str, new_disk_path: str, target_raid_level: Optional[str] = None) -> str:
+        """
+        Adds a disk to an existing RAID array, optionally changing the RAID level.
+        Returns the Job ID.
+        """
+        commands = []
+        
+        # 1. Prepare the new disk
+        commands.append(f"echo 'Preparing {new_disk_path}...'")
+        commands.append(f"umount -l {new_disk_path}* 2>/dev/null || true")
+        commands.append(f"wipefs -a {new_disk_path}")
+        
+        # 2. Add as spare
+        commands.append(f"echo 'Adding {new_disk_path} to {md_device}...'")
+        commands.append(f"mdadm --manage {md_device} --add {new_disk_path}")
+        
+        # 3. Determine Grow Parameters
+        # We need to know current active devices count to increment it
+        # Since this runs in a job, we use shell calculation or assume the manager passed checked info.
+        # Ideally, we query mdadm detail.
+        # "mdadm --detail /dev/md0 | grep 'Active Devices' | awk '{print $4}'"
+        
+        commands.append(f"ACTIVE_DEVS=$(mdadm --detail {md_device} | grep 'Active Devices' | awk '{{print $NF}}')")
+        commands.append("NEW_COUNT=$((ACTIVE_DEVS + 1))")
+        
+        grow_cmd = f"mdadm --grow {md_device} --raid-devices=$NEW_COUNT"
+        
+        if target_raid_level:
+            # Strip 'raid' prefix if present (e.g. raid5 -> 5)
+            level = target_raid_level.replace("raid", "")
+            grow_cmd += f" --level={level}"
+            commands.append(f"echo 'Growing array to {new_disk_path} devices and converting to RAID {level}...'")
+            
+            # Special case: RAID1 -> RAID5 usually requires a backup file unless "--backup-file" is specified 
+            # or if using a modern kernel/mdadm capable of internal backup.
+            # For safety, we should probably specify a backup file if transitioning levels, 
+            # but that requires a separate filesystem. 
+            # Modern mdadm often handles this in memory or requires a file.
+            # Let's try adding --backup-file only if needed is risky without knowing FS layout.
+            # We will assume standard growth. If it fails, the job fails.
+        else:
+            commands.append(f"echo 'Growing array to $NEW_COUNT devices...'")
+
+        commands.append(grow_cmd)
+        
+        # 4. Wait for reshape/sync? 
+        # btrfs resize can usually happen while it's syncing, but safest to wait or just trigger it.
+        # If we just expanded the device, we should tell btrfs to maximize usage.
+        
+        # We need the mountpoint of the md device to run btrfs filesystem resize
+        # simple hack: find where it matches in mount
+        # "findmnt -n -o TARGET --source /dev/md0"
+        
+        commands.append(f"MOUNTPOINT=$(findmnt -n -o TARGET --source {md_device})")
+        commands.append(f"if [ -z \"$MOUNTPOINT\" ]; then echo 'Device not mounted, skipping FS resize'; else echo 'Resizing filesystem at $MOUNTPOINT...'; btrfs filesystem resize max $MOUNTPOINT; fi")
+        
+        commands.append("echo 'RAID expansion initiated successfully.'")
+        
+        full_command = " && ".join(commands)
+        job_manager = JobManager()
+        return job_manager.create_job(full_command)
+
     def mount_partition(self, device: str, automatic: bool, mount_name: Optional[str]) -> str:
         """
         Mounts a partition to a directory in /mnt.

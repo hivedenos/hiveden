@@ -121,6 +121,11 @@ class StorageStrategyApplyResponse(BaseResponse):
     data: JobInfo
 
 
+class RaidAddDiskRequest(BaseModel):
+    device_path: str
+    target_raid_level: Optional[str] = None
+
+
 class BtrfsShareListResponse(BaseResponse):
     data: List[BtrfsShare]
 
