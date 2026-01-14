@@ -16,7 +16,7 @@
   - [ ] Write tests for restore process (mocking `pg_restore` and file extraction).
   - [ ] Implement `pg_restore` wrapper.
   - [ ] Implement file extraction logic.
-- [ ] Task: Conductor - User Manual Verification 'Phase 1: Core Backup Logic' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Phase 1: Core Backup Logic' (Protocol in workflow.md) [checkpoint: 7a0313d]
 
 ## Phase 2: CLI Integration
 
