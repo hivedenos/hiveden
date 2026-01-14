@@ -22,7 +22,7 @@
     - [ ] Add config dependency to `BackupManager`.
     - [ ] Implement validation logic: ensure backup directory is set and exists.
     - [ ] Prevent backup creation if validation fails.
-- [ ] Task: Implement Container Lifecycle Management
+- [x] Task: Implement Container Lifecycle Management ab99d67
     - [ ] Import `DockerManager` or equivalent service.
     - [ ] Update `create_app_data_backup` to accept a `container_name`.
     - [ ] Implement logic: Stop container -> Backup -> Start container.
