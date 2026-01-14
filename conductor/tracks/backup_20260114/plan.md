@@ -1,44 +1,57 @@
 # Implementation Plan - Automated Backups
 
 ## Phase 1: Core Backup Logic
-
-- [x] Task: Create backup module structure 4a9a211
-  - [ ] Create `src/hiveden/backups/` directory and `__init__.py`.
-  - [ ] Define `BackupManager` class interface in `src/hiveden/backups/manager.py`.
-- [x] Task: Implement PostgreSQL Backup 1ba5303
-  - [ ] Write tests for PostgreSQL backup generation (mocking `pg_dump`).
-  - [ ] Implement `pg_dump` wrapper in `BackupManager`.
-  - [ ] Implement storage logic for SQL dump files.
-- [x] Task: Implement Application Data Backup 4a2ea5e
-  - [ ] Write tests for file archiving logic.
-  - [ ] Implement file archiving (tar/zip) for specified directories (e.g., `/etc/hiveden`, data dirs).
-- [x] Task: Implement Restore Logic 024381f
-  - [ ] Write tests for restore process (mocking `pg_restore` and file extraction).
-  - [ ] Implement `pg_restore` wrapper.
-  - [ ] Implement file extraction logic.
+- [x] Task: Create backup module structure [4a9a211]
+    - [x] Create `src/hiveden/backups/` directory and `__init__.py`.
+    - [x] Define `BackupManager` class interface in `src/hiveden/backups/manager.py`.
+- [x] Task: Implement PostgreSQL Backup [1ba5303]
+    - [x] Write tests for PostgreSQL backup generation (mocking `pg_dump`).
+    - [x] Implement `pg_dump` wrapper in `BackupManager`.
+    - [x] Implement storage logic for SQL dump files.
+- [x] Task: Implement Application Data Backup [4a2ea5e]
+    - [x] Write tests for file archiving logic.
+    - [x] Implement file archiving (tar/zip) for specified directories (e.g., `/etc/hiveden`, data dirs).
+- [x] Task: Implement Restore Logic [024381f]
+    - [x] Write tests for restore process (mocking `pg_restore` and file extraction).
+    - [x] Implement `pg_restore` wrapper.
+    - [x] Implement file extraction logic.
 - [x] Task: Conductor - User Manual Verification 'Phase 1: Core Backup Logic' (Protocol in workflow.md) [checkpoint: 7a0313d]
 
-## Phase 2: CLI Integration
+## Phase 1.5: Advanced Logic & Configuration
+- [ ] Task: Implement Configuration Validation
+    - [ ] Add config dependency to `BackupManager`.
+    - [ ] Implement validation logic: ensure backup directory is set and exists.
+    - [ ] Prevent backup creation if validation fails.
+- [ ] Task: Implement Container Lifecycle Management
+    - [ ] Import `DockerManager` or equivalent service.
+    - [ ] Update `create_app_data_backup` to accept a `container_name`.
+    - [ ] Implement logic: Stop container -> Backup -> Start container.
+    - [ ] Ensure container is restarted even if backup fails (try/finally).
+- [ ] Task: Implement Retention Policy & Listing
+    - [ ] Implement `list_backups` method with filtering (type, target).
+    - [ ] Implement `enforce_retention_policy` method to delete old backups.
+    - [ ] Integrate retention check into backup creation flow.
+- [ ] Task: Conductor - User Manual Verification 'Phase 1.5: Advanced Logic & Configuration' (Protocol in workflow.md)
 
+## Phase 2: CLI Integration
 - [ ] Task: Create Backup CLI Group
-  - [ ] Create `src/hiveden/cli/backup.py`.
-  - [ ] Register `backup` command group in `src/hiveden/cli/main.py`.
-- [ ] Task: Implement Create Command
-  - [ ] Write integration test for `hiveden backup create`.
-  - [ ] Implement command to trigger `BackupManager.create_backup()`.
+    - [ ] Create `src/hiveden/cli/backup.py`.
+    - [ ] Register `backup` command group in `src/hiveden/cli/main.py`.
+- [ ] Task: Implement Create Command with Validation
+    - [ ] Wire up CLI to `BackupManager`.
+    - [ ] Handle validation errors gracefully.
 - [ ] Task: Implement List and Restore Commands
-  - [ ] Write integration tests for list and restore commands.
-  - [ ] Implement `hiveden backup list` and `hiveden backup restore`.
+    - [ ] Implement `hiveden backup list` using new filtering logic.
+    - [ ] Implement `hiveden backup restore`.
 - [ ] Task: Conductor - User Manual Verification 'Phase 2: CLI Integration' (Protocol in workflow.md)
 
 ## Phase 3: API & Scheduling
-
 - [ ] Task: Create API Endpoints
-  - [ ] Create `src/hiveden/api/routers/backups.py`.
-  - [ ] Implement endpoints for create, list, update, delete, and restore.
-  - [ ] Register router in `src/hiveden/api/server.py`.
+    - [ ] Create `src/hiveden/api/routers/backups.py`.
+    - [ ] Implement `GET /api/backups` with query params.
+    - [ ] Implement `POST /api/backups` and `POST /api/backups/restore`.
+    - [ ] Implement `GET/PUT /api/config/backups` for directory and retention settings.
 - [ ] Task: Implement Scheduling
-  - [ ] Research and select scheduling library (e.g., `APScheduler`) or systemd timer integration.
-  - [ ] Implement scheduling logic in `BackupManager`.
-  - [ ] Add CLI/API support for configuring schedules.
+    - [ ] Implement scheduling logic in `BackupManager`.
+    - [ ] Add CLI/API support for configuring schedules.
 - [ ] Task: Conductor - User Manual Verification 'Phase 3: API & Scheduling' (Protocol in workflow.md)

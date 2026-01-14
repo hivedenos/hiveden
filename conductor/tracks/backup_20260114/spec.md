@@ -6,33 +6,49 @@ Data integrity and recovery are critical for any server management system. This 
 ## Goals
 1.  **PostgreSQL Backup:**
     -   Automate the backup process for PostgreSQL databases.
-    -   Ensure backups are stored securely.
+    -   Ensure backups are stored securely with timestamped filenames.
     -   Provide a mechanism to restore from these backups.
 
 2.  **Application Data Backup:**
     -   Identify and backup critical Hiveden application data (configuration files, etc.).
+    -   **Lifecycle Management:** Ensure data consistency by stopping the relevant container before backup and starting it immediately after.
     -   Ensure data can be restored in case of corruption or loss.
 
 3.  **Automation & Scheduling:**
     -   Allow users to schedule backups (e.g., daily, weekly).
     -   Integrate with the existing job scheduling system if available, or implement a new one.
 
+4.  **Configuration & Management:**
+    -   Centralized configuration for backup locations, retention policies, and targets.
+    -   Prevent backups if configuration is invalid or missing.
+
 ## Requirements
--   **CLI Commands:**
-    -   `hiveden backup create`: Trigger an immediate backup.
-    -   `hiveden backup list`: List available backups.
-    -   `hiveden backup restore <backup_id>`: Restore from a specific backup.
-    -   `hiveden backup schedule`: Configure backup schedules.
--   **API Endpoints:**
-    -   Corresponding endpoints for triggering, listing, restoring, and scheduling backups.
--   **Storage:**
-    -   Backups should be stored in a configurable local directory initially.
-    -   Future support for remote storage (S3, etc.) should be considered in the design.
+
+### Storage & Configuration
+-   **Backup Directory:** Must be configurable via the standard Hiveden configuration system.
+-   **Filenames:** Must contain the date and time of the backup (e.g., `db_name_YYYYMMDD_HHMMSS.sql`).
 -   **Retention Policy:**
-    -   Implement a basic retention policy (e.g., keep last N backups) to manage storage usage.
+    -   Configurable number of backups to keep.
+    -   Automated cleanup of old backups based on count.
+
+### API Endpoints
+-   **Configuration Management:**
+    -   `GET/PUT /api/config/backups`: Manage backup directory and retention settings.
+-   **Backup Operations:**
+    -   `GET /api/backups`: Retrieve all backups.
+        -   **Query Params:** `type` (database/app), `target` (db_name/app_name).
+    -   `POST /api/backups`: Trigger a new backup.
+    -   `POST /api/backups/restore`: Restore a backup.
+
+### CLI Commands
+-   `hiveden backup create`: Trigger an immediate backup.
+-   `hiveden backup list`: List available backups with filtering options.
+-   `hiveden backup restore <backup_id>`: Restore from a specific backup.
+-   `hiveden backup schedule`: Configure backup schedules.
 
 ## Technical Considerations
--   Use `pg_dump` and `pg_restore` for PostgreSQL operations.
--   Use standard file archiving tools (e.g., `tar`, `zip`) for application data.
--   Ensure operations are atomic where possible to prevent partial backups.
--   Leverage `hiveden.config` for storing backup settings.
+-   **Container Integration:** Use Hiveden's Docker/LXC modules to control container state during application backups.
+-   **Validation:** All backup operations must validate configuration existence before proceeding.
+-   **Tools:**
+    -   `pg_dump`/`pg_restore` for PostgreSQL.
+    -   `tar` for application files.
