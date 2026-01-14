@@ -2,29 +2,68 @@ import subprocess
 import os
 import tarfile
 from datetime import datetime
-from typing import List
+from typing import List, Optional
+from hiveden.config.settings import config
 
 class BackupManager:
-    def create_postgres_backup(self, db_name: str, output_dir: str) -> str:
+    def get_backup_directory(self, override_dir: Optional[str] = None) -> str:
+        """
+        Resolves the backup directory.
+        
+        Args:
+            override_dir: Optional directory to use instead of config.
+            
+        Returns:
+            The resolved backup directory path.
+            
+        Raises:
+            ValueError: If no directory is configured.
+        """
+        path = override_dir or config.backup_directory
+        if not path:
+            raise ValueError("Backup configuration missing: No backup directory set.")
+        return path
+
+    def validate_config(self, override_dir: Optional[str] = None) -> None:
+        """
+        Validates that the backup configuration is valid and accessible.
+        
+        Args:
+            override_dir: Optional directory to validate.
+            
+        Raises:
+            ValueError: If config is missing or invalid.
+        """
+        path = self.get_backup_directory(override_dir)
+        # We don't necessarily enforce it exists yet (we might create it), 
+        # but we enforce that a path IS set.
+        if not path:
+             raise ValueError("Backup configuration missing: No backup directory set.")
+
+    def create_postgres_backup(self, db_name: str, output_dir: Optional[str] = None) -> str:
         """
         Creates a backup of the specified PostgreSQL database.
         
         Args:
             db_name: The name of the database to backup.
-            output_dir: The directory where the backup file will be saved.
+            output_dir: The directory where the backup file will be saved. If None, uses config.
             
         Returns:
             The path to the created backup file.
             
         Raises:
             Exception: If pg_dump fails.
+            ValueError: If configuration is missing.
         """
+        self.validate_config(output_dir)
+        target_dir = self.get_backup_directory(output_dir)
+        
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"{db_name}_{timestamp}.sql"
-        filepath = os.path.join(output_dir, filename)
+        filepath = os.path.join(target_dir, filename)
         
         # Ensure output directory exists
-        os.makedirs(output_dir, exist_ok=True)
+        os.makedirs(target_dir, exist_ok=True)
         
         try:
             subprocess.run(
@@ -40,26 +79,30 @@ class BackupManager:
                 os.remove(filepath)
             raise Exception(f"Backup failed: {e.stderr}") from e
 
-    def create_app_data_backup(self, source_dirs: List[str], output_dir: str) -> str:
+    def create_app_data_backup(self, source_dirs: List[str], output_dir: Optional[str] = None) -> str:
         """
         Creates a compressed archive of the specified source directories.
         
         Args:
             source_dirs: List of directories to include in the backup.
-            output_dir: The directory where the backup file will be saved.
+            output_dir: The directory where the backup file will be saved. If None, uses config.
             
         Returns:
             The path to the created backup file.
             
         Raises:
             Exception: If archiving fails.
+            ValueError: If configuration is missing.
         """
+        self.validate_config(output_dir)
+        target_dir = self.get_backup_directory(output_dir)
+        
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"hiveden_app_data_{timestamp}.tar.gz"
-        filepath = os.path.join(output_dir, filename)
+        filepath = os.path.join(target_dir, filename)
         
         # Ensure output directory exists
-        os.makedirs(output_dir, exist_ok=True)
+        os.makedirs(target_dir, exist_ok=True)
         
         try:
             with tarfile.open(filepath, "w:gz") as tar:
