@@ -9,7 +9,7 @@
   - [ ] Write tests for PostgreSQL backup generation (mocking `pg_dump`).
   - [ ] Implement `pg_dump` wrapper in `BackupManager`.
   - [ ] Implement storage logic for SQL dump files.
-- [ ] Task: Implement Application Data Backup
+- [x] Task: Implement Application Data Backup 4a2ea5e
   - [ ] Write tests for file archiving logic.
   - [ ] Implement file archiving (tar/zip) for specified directories (e.g., `/etc/hiveden`, data dirs).
 - [ ] Task: Implement Restore Logic
