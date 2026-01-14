@@ -5,7 +5,7 @@
 - [x] Task: Create backup module structure 4a9a211
   - [ ] Create `src/hiveden/backups/` directory and `__init__.py`.
   - [ ] Define `BackupManager` class interface in `src/hiveden/backups/manager.py`.
-- [ ] Task: Implement PostgreSQL Backup
+- [x] Task: Implement PostgreSQL Backup 1ba5303
   - [ ] Write tests for PostgreSQL backup generation (mocking `pg_dump`).
   - [ ] Implement `pg_dump` wrapper in `BackupManager`.
   - [ ] Implement storage logic for SQL dump files.
