@@ -27,7 +27,7 @@
     - [ ] Update `create_app_data_backup` to accept a `container_name`.
     - [ ] Implement logic: Stop container -> Backup -> Start container.
     - [ ] Ensure container is restarted even if backup fails (try/finally).
-- [ ] Task: Implement Retention Policy & Listing
+- [x] Task: Implement Retention Policy - [~] Task: Implement Retention Policy & Listing Listing 115ab39
     - [ ] Implement `list_backups` method with filtering (type, target).
     - [ ] Implement `enforce_retention_policy` method to delete old backups.
     - [ ] Integrate retention check into backup creation flow.
