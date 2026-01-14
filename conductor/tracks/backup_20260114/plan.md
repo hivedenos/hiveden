@@ -31,7 +31,7 @@
     - [ ] Implement `list_backups` method with filtering (type, target).
     - [ ] Implement `enforce_retention_policy` method to delete old backups.
     - [ ] Integrate retention check into backup creation flow.
-- [ ] Task: Conductor - User Manual Verification 'Phase 1.5: Advanced Logic & Configuration' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Phase 1.5: Advanced Logic - [ ] Task: Conductor - User Manual Verification 'Phase 1.5: Advanced Logic & Configuration' (Protocol in workflow.md) Configuration' (Protocol in workflow.md) [checkpoint: ec32502]
 
 ## Phase 2: CLI Integration
 - [ ] Task: Create Backup CLI Group
