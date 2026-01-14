@@ -51,7 +51,7 @@
     - [ ] Implement `GET /api/backups` with query params.
     - [ ] Implement `POST /api/backups` and `POST /api/backups/restore`.
     - [ ] Implement `GET/PUT /api/config/backups` for directory and retention settings.
-- [ ] Task: Implement Scheduling
+- [x] Task: Implement Scheduling 4bef2b7
     - [ ] Implement scheduling logic in `BackupManager`.
     - [ ] Add CLI/API support for configuring schedules.
-- [ ] Task: Conductor - User Manual Verification 'Phase 3: API & Scheduling' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Phase 3: API - [ ] Task: Conductor - User Manual Verification 'Phase 3: API & Scheduling' (Protocol in workflow.md) Scheduling' (Protocol in workflow.md) [checkpoint: 4bef2b7]
