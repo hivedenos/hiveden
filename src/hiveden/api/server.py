@@ -31,6 +31,13 @@ app = FastAPI(
 def startup_db():
     db_manager = get_db_manager()
     db_manager.initialize_db()
+    
+    # Start Backup Scheduler
+    try:
+        from hiveden.backups.scheduler import BackupScheduler
+        BackupScheduler().start()
+    except Exception as e:
+        print(f"Failed to start backup scheduler: {e}")
 
 # Configure CORS
 app.add_middleware(
@@ -41,7 +48,7 @@ app.add_middleware(
     allow_headers=["*"],  # Allow all headers
 )
 
-app.include_router(backups.router) # Added
+app.include_router(backups.router)
 app.include_router(config.router)
 app.include_router(database.router)
 app.include_router(docker.router)

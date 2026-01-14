@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from hiveden.backups.manager import BackupManager
+from hiveden.backups.scheduler import BackupScheduler
 
 router = APIRouter(prefix="/backups", tags=["backups"])
 
@@ -29,6 +30,14 @@ class BackupConfig(BaseModel):
     directory: str
     retention_count: int
 
+class BackupSchedule(BaseModel):
+    id: Optional[str] = None
+    cron: str
+    type: str
+    target: str
+    container_name: Optional[str] = None
+    source_dirs: Optional[List[str]] = None
+
 @router.get("/config", response_model=BackupConfig)
 def get_backup_config():
     from hiveden.db.session import get_db_manager
@@ -42,7 +51,6 @@ def get_backup_config():
     # Defaults
     directory = app_config.backup_directory
     retention_count = 5 
-    # Try to get default retention from app_config if it existed, but we assume 5
     
     try:
         core = module_repo.get_by_short_name('core')
@@ -74,6 +82,30 @@ def update_backup_config(config: BackupConfig):
         raise HTTPException(status_code=500, detail=f"Failed to update config: {e}")
         
     return config
+
+@router.get("/schedules", response_model=List[BackupSchedule])
+def list_schedules():
+    scheduler = BackupScheduler()
+    return scheduler.get_schedules()
+
+@router.post("/schedules", response_model=BackupSchedule)
+def create_schedule(schedule: BackupSchedule):
+    scheduler = BackupScheduler()
+    try:
+        data = schedule.dict()
+        new_schedule = scheduler.add_schedule(data)
+        return new_schedule
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create schedule: {e}")
+
+@router.delete("/schedules/{schedule_id}")
+def delete_schedule(schedule_id: str):
+    scheduler = BackupScheduler()
+    try:
+        scheduler.delete_schedule(schedule_id)
+        return {"message": "Schedule deleted"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete schedule: {e}")
 
 @router.get("", response_model=List[Backup])
 def list_backups(

@@ -5,6 +5,12 @@ import sys
 
 # Mock yoyo to avoid dependency issues during import
 sys.modules["yoyo"] = MagicMock()
+# Mock apscheduler
+sys.modules["apscheduler"] = MagicMock()
+sys.modules["apscheduler.schedulers"] = MagicMock()
+sys.modules["apscheduler.schedulers.asyncio"] = MagicMock()
+sys.modules["apscheduler.triggers"] = MagicMock()
+sys.modules["apscheduler.triggers.cron"] = MagicMock()
 
 def test_router_registered():
     from hiveden.api.server import app
@@ -82,7 +88,6 @@ def test_get_config():
     app.include_router(router)
     client = TestClient(app)
     
-    # Mock DB interactions - patch the source modules
     with patch("hiveden.db.session.get_db_manager"):
         with patch("hiveden.db.repositories.core.ConfigRepository") as MockConfigRepo:
             mock_repo = MockConfigRepo.return_value
@@ -121,6 +126,64 @@ def test_update_config():
             assert data["directory"] == "/new/backups"
             assert data["retention_count"] == 7
             
-            # Verify set_value calls
             calls = mock_repo.set_value.call_args_list
             assert len(calls) == 2
+
+def test_list_schedules():
+    from hiveden.api.routers.backups import router
+    from fastapi import FastAPI
+    
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+    
+    with patch("hiveden.api.routers.backups.BackupScheduler") as MockScheduler:
+        mock_instance = MockScheduler.return_value
+        mock_instance.get_schedules.return_value = [
+            {"id": "1", "cron": "0 0 * * *", "type": "database", "target": "db"}
+        ]
+        
+        response = client.get("/backups/schedules")
+        assert response.status_code == 200
+        assert len(response.json()) == 1
+        assert response.json()[0]["id"] == "1"
+
+def test_create_schedule():
+    from hiveden.api.routers.backups import router
+    from fastapi import FastAPI
+    
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+    
+    with patch("hiveden.api.routers.backups.BackupScheduler") as MockScheduler:
+        mock_instance = MockScheduler.return_value
+        mock_instance.add_schedule.return_value = {
+            "id": "new", 
+            "cron": "0 0 * * *",
+            "type": "database",
+            "target": "db"
+        }
+        
+        payload = {"cron": "0 0 * * *", "type": "database", "target": "db"}
+        response = client.post("/backups/schedules", json=payload)
+        
+        assert response.status_code == 200
+        assert response.json()["id"] == "new"
+        mock_instance.add_schedule.assert_called_once()
+
+def test_delete_schedule():
+    from hiveden.api.routers.backups import router
+    from fastapi import FastAPI
+    
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+    
+    with patch("hiveden.api.routers.backups.BackupScheduler") as MockScheduler:
+        mock_instance = MockScheduler.return_value
+        
+        response = client.delete("/backups/schedules/123")
+        
+        assert response.status_code == 200
+        mock_instance.delete_schedule.assert_called_with("123")
