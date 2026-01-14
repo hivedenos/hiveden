@@ -46,7 +46,7 @@
 - [ ] Task: Conductor - User Manual Verification 'Phase 2: CLI Integration' (Protocol in workflow.md)
 
 ## Phase 3: API & Scheduling
-- [ ] Task: Create API Endpoints
+- [x] Task: Create API Endpoints d38404a
     - [ ] Create `src/hiveden/api/routers/backups.py`.
     - [ ] Implement `GET /api/backups` with query params.
     - [ ] Implement `POST /api/backups` and `POST /api/backups/restore`.
