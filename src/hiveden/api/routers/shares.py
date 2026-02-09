@@ -1,24 +1,25 @@
+import traceback
+
 from fastapi import APIRouter, HTTPException
 from fastapi.logger import logger
 from fastapi.responses import JSONResponse
-import traceback
 
 from hiveden.api.dtos import (
-    DataResponse, 
-    SuccessResponse, 
+    BtrfsShareListResponse,
+    BtrfsVolumeListResponse,
+    CreateBtrfsShareRequest,
+    DataResponse,
     ErrorResponse,
-    ZFSDatasetCreate, 
-    ZFSPoolCreate,
-    SMBShareCreate,
     MountSMBShareRequest,
     SMBListResponse,
     SMBMount,
-    CreateBtrfsShareRequest, 
-    BtrfsVolumeListResponse, 
-    BtrfsShareListResponse
+    SMBShareCreate,
+    SuccessResponse,
+    ZFSDatasetCreate,
+    ZFSPoolCreate,
 )
-from hiveden.shares.models import ZFSPool, ZFSDataset, BtrfsVolume, BtrfsShare
 from hiveden.services.logs import LogService
+from hiveden.shares.models import ZFSDataset, ZFSPool
 
 router = APIRouter(prefix="/shares", tags=["Shares"])
 
@@ -33,12 +34,12 @@ def mount_smb_share_endpoint(request: MountSMBShareRequest):
         manager.mount_share(
             remote_path=request.remote_path,
             mount_point=request.mount_point,
-            username=request.username,
-            password=request.password,
-            options=request.options,
+            username=request.username or "no_username",
+            password=request.password or "no_password",
+            options=request.options or [],
             persist=request.persist
         )
-        
+
         LogService().info(
             actor="user",
             action="smb.mount",
@@ -46,19 +47,19 @@ def mount_smb_share_endpoint(request: MountSMBShareRequest):
             module="shares",
             metadata={"remote": request.remote_path, "mount": request.mount_point}
         )
-        
+
         return SuccessResponse(message=f"Mounted {request.remote_path} at {request.mount_point}")
     except Exception as e:
         logger.error(f"Error mounting SMB share: {e}\n{traceback.format_exc()}")
         return JSONResponse(
-            status_code=500, 
+            status_code=500,
             content=ErrorResponse(message=str(e)).model_dump()
         )
 
 @router.delete("/smb/mount", response_model=SuccessResponse)
 def unmount_smb_share_endpoint(
-    mount_point: str, 
-    remove_persistence: bool = False, 
+    mount_point: str,
+    remove_persistence: bool = False,
     force: bool = False
 ):
     """
@@ -72,7 +73,7 @@ def unmount_smb_share_endpoint(
             remove_persistence=remove_persistence,
             force=force
         )
-        
+
         LogService().info(
             actor="user",
             action="smb.unmount",
@@ -80,12 +81,12 @@ def unmount_smb_share_endpoint(
             module="shares",
             metadata={"mount": mount_point}
         )
-        
+
         return SuccessResponse(message=f"Unmounted {mount_point}")
     except Exception as e:
         logger.error(f"Error unmounting SMB share: {e}\n{traceback.format_exc()}")
         return JSONResponse(
-            status_code=500, 
+            status_code=500,
             content=ErrorResponse(message=str(e)).model_dump()
         )
 
@@ -108,7 +109,7 @@ def create_zfs_pool_endpoint(pool: ZFSPoolCreate):
     try:
         manager = ZFSManager()
         manager.create_pool(pool.name, pool.devices)
-        
+
         LogService().info(
             actor="user",
             action="zfs.pool.create",
@@ -116,7 +117,7 @@ def create_zfs_pool_endpoint(pool: ZFSPoolCreate):
             module="shares",
             metadata={"pool": pool.name, "devices": pool.devices}
         )
-        
+
         return SuccessResponse(message=f"Pool {pool.name} created.")
     except Exception as e:
         logger.error(f"Error creating ZFS pool: {e}\n{traceback.format_exc()}")
@@ -128,7 +129,7 @@ def destroy_zfs_pool_endpoint(name: str):
     try:
         manager = ZFSManager()
         manager.destroy_pool(name)
-        
+
         LogService().info(
             actor="user",
             action="zfs.pool.destroy",
@@ -136,7 +137,7 @@ def destroy_zfs_pool_endpoint(name: str):
             module="shares",
             metadata={"pool": name}
         )
-        
+
         return SuccessResponse(message=f"Pool {name} destroyed.")
     except Exception as e:
         logger.error(f"Error destroying ZFS pool: {e}\n{traceback.format_exc()}")
@@ -159,7 +160,7 @@ def create_zfs_dataset_endpoint(dataset: ZFSDatasetCreate):
     try:
         manager = ZFSManager()
         manager.create_dataset(dataset.name)
-        
+
         LogService().info(
             actor="user",
             action="zfs.dataset.create",
@@ -167,7 +168,7 @@ def create_zfs_dataset_endpoint(dataset: ZFSDatasetCreate):
             module="shares",
             metadata={"dataset": dataset.name}
         )
-        
+
         return SuccessResponse(message=f"Dataset {dataset.name} created.")
     except Exception as e:
         logger.error(f"Error creating ZFS dataset: {e}\n{traceback.format_exc()}")
@@ -179,7 +180,7 @@ def destroy_zfs_dataset_endpoint(name: str):
     try:
         manager = ZFSManager()
         manager.destroy_dataset(name)
-        
+
         LogService().info(
             actor="user",
             action="zfs.dataset.destroy",
@@ -187,7 +188,7 @@ def destroy_zfs_dataset_endpoint(name: str):
             module="shares",
             metadata={"dataset": name}
         )
-        
+
         return SuccessResponse(message=f"Dataset {name} destroyed.")
     except Exception as e:
         logger.error(f"Error destroying ZFS dataset: {e}\n{traceback.format_exc()}")
@@ -207,17 +208,17 @@ def list_smb_shares_endpoint():
     from hiveden.shares.smb import SMBManager
     try:
         manager = SMBManager()
-        
+
         exported = manager.list_shares()
         mounted_data = manager.list_mounted_shares()
-        
+
         mounted = [SMBMount(**m) for m in mounted_data]
-        
+
         return SMBListResponse(exported=exported, mounted=mounted)
     except Exception as e:
         logger.error(f"Error creating SMB share: {e}\n{traceback.format_exc()}")
         return JSONResponse(
-            status_code=500, 
+            status_code=500,
             content=ErrorResponse(message=str(e)).model_dump()
         )
 
@@ -234,7 +235,7 @@ def create_smb_share_endpoint(share: SMBShareCreate):
             browsable=share.browsable,
             guest_ok=share.guest_ok
         )
-        
+
         LogService().info(
             actor="user",
             action="smb.create",
@@ -242,7 +243,7 @@ def create_smb_share_endpoint(share: SMBShareCreate):
             module="shares",
             metadata={"name": share.name, "path": share.path}
         )
-        
+
         return SuccessResponse(message=f"Share {share.name} created.")
     except Exception as e:
         logger.error(f"Error creating SMB share: {e}\n{traceback.format_exc()}")
@@ -254,7 +255,7 @@ def destroy_smb_share_endpoint(name: str):
     try:
         manager = SMBManager()
         manager.delete_share(name)
-        
+
         LogService().info(
             actor="user",
             action="smb.delete",
@@ -262,7 +263,7 @@ def destroy_smb_share_endpoint(name: str):
             module="shares",
             metadata={"name": name}
         )
-        
+
         return SuccessResponse(message=f"Share {name} deleted.")
     except Exception as e:
         logger.error(f"Error destroying SMB share: {e}\n{traceback.format_exc()}")
@@ -300,7 +301,7 @@ def create_btrfs_share_endpoint(share: CreateBtrfsShareRequest):
             name=share.name,
             mount_path=share.mount_path
         )
-        
+
         LogService().info(
             actor="user",
             action="btrfs.share.create",
@@ -308,7 +309,7 @@ def create_btrfs_share_endpoint(share: CreateBtrfsShareRequest):
             module="shares",
             metadata={"name": share.name, "parent": share.parent_path, "mount": share.mount_path}
         )
-        
+
         return SuccessResponse(message=f"Btrfs share {share.name} created and mounted.")
     except ValueError as e:
         logger.error(f"Validation error creating Btrfs share: {e}\n{traceback.format_exc()}")

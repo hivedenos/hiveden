@@ -196,6 +196,13 @@ class DNSConfigResponse(BaseResponse):
 class DNSUpdateRequest(BaseModel):
     api_key: str
 
+class MetricsDependenciesConfig(BaseModel):
+    containers: List[str]
+
+class MetricsConfigResponse(BaseResponse):
+    host: Optional[str] = None
+    dependencies: MetricsDependenciesConfig
+
 class SystemdServiceResponse(BaseResponse):
     data: Optional[SystemdServiceStatus] = None
 
@@ -287,7 +294,8 @@ class DataResponse(BaseResponse):
         Dict[str, Any],
         DomainInfoResponse,
         DomainUpdateResponse,
-        DNSConfigResponse
+        DNSConfigResponse,
+        MetricsConfigResponse
     ]] = None
 
 class LogEntry(BaseModel):

@@ -1,9 +1,9 @@
 import os
+import re
 import shutil
 import logging
 from typing import Optional
 from fastapi import APIRouter, HTTPException, BackgroundTasks
-from pydantic import BaseModel
 
 from hiveden.db.session import get_db_manager
 from hiveden.db.repositories.locations import LocationRepository
@@ -20,6 +20,8 @@ from hiveden.api.dtos import (
     IngressContainerInfo,
     DNSConfigResponse,
     DNSUpdateRequest,
+    MetricsConfigResponse,
+    MetricsDependenciesConfig,
     UpdateLocationRequest
 )
 from hiveden.explorer.models import FilesystemLocation
@@ -28,6 +30,51 @@ from hiveden.services.logs import LogService
 
 router = APIRouter(prefix="/system", tags=["System"])
 logger = logging.getLogger(__name__)
+
+def _extract_traefik_domain_from_rule(rule: str) -> Optional[str]:
+    """Extract first host from a Traefik Host(...) rule."""
+    if "Host(" not in rule:
+        return None
+
+    match = re.search(r"Host\((.*?)\)", rule)
+    if not match:
+        return None
+
+    host_part = match.group(1)
+    host_match = re.search(r"[`'\"]([^`'\"]+)[`'\"]", host_part)
+    if not host_match:
+        return None
+
+    return host_match.group(1).strip()
+
+
+def _get_traefik_scheme(labels: dict) -> str:
+    """Infer URL scheme from Traefik entrypoint labels."""
+    for key, value in labels.items():
+        if ".entrypoints" not in key:
+            continue
+
+        value_l = str(value).lower()
+        if "websecure" in value_l:
+            return "https://"
+        if "web" in value_l:
+            return "http://"
+
+    return "http://"
+
+
+def get_traefik_url_from_labels(labels: dict) -> Optional[str]:
+    """Extract full URL from Traefik labels if Host rule exists."""
+    if not labels:
+        return None
+
+    for key, value in labels.items():
+        if ".rule" in key and "Host(" in str(value):
+            domain = _extract_traefik_domain_from_rule(str(value))
+            if domain:
+                return f"{_get_traefik_scheme(labels)}{domain}"
+    return None
+
 
 def parse_ingress_from_labels(domain: str, labels: dict) -> Optional[IngressConfig]:
     """Reconstruct IngressConfig from Traefik labels."""
@@ -60,6 +107,30 @@ def parse_ingress_from_labels(domain: str, labels: dict) -> Optional[IngressConf
         except Exception as e:
             logger.error(f"Failed to parse ingress from labels: {e}")
             pass
+
+    return None
+
+def resolve_prometheus_metrics_host(docker_manager: DockerManager) -> Optional[str]:
+    """Resolve Prometheus host from running container Traefik labels."""
+    try:
+        containers = docker_manager.list_containers(all=False)
+    except Exception as e:
+        logger.warning(f"Failed to list containers for metrics host resolution: {e}")
+        return None
+
+    for c in containers:
+        image = (c.Image or "").lower()
+        if "prometheus" not in image:
+            continue
+
+        try:
+            config_dict = docker_manager.get_container_config(c.Id)
+            labels = config_dict.get("labels", {})
+            resolved_url = get_traefik_url_from_labels(labels)
+            if resolved_url:
+                return resolved_url
+        except Exception as e:
+            logger.warning(f"Failed to inspect container {c.Id} for metrics host: {e}")
 
     return None
 
@@ -146,18 +217,29 @@ def update_dns_config(req: DNSUpdateRequest):
 
     try:
         config_repo.set_value('core', 'dns.api_key', req.api_key)
-        
+
         LogService().info(
             actor="user",
             action="system.dns.update",
             message="Updated DNS API configuration",
             module="system"
         )
-        
+
         return SuccessResponse(message="DNS configuration updated successfully.")
     except Exception as e:
         logger.error(f"Failed to update DNS config: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/metrics", response_model=MetricsConfigResponse)
+def get_metrics_config():
+    """Get metrics configuration for UI."""
+    metrics_host = resolve_prometheus_metrics_host(DockerManager())
+    return MetricsConfigResponse(
+        host=metrics_host,
+        dependencies=MetricsDependenciesConfig(
+            containers=config.metrics.dependencies.containers
+        )
+    )
 
 @router.put("/domain", response_model=DomainUpdateResponse)
 def update_system_domain(req: DomainUpdateRequest):
@@ -401,7 +483,7 @@ def update_system_location(key: str, req: UpdateLocationRequest, background_task
 
     # Update DB immediately to reflect intent
     repo.update(location.id, path=new_path)
-    
+
     LogService().info(
         actor="user",
         action="system.location.update",
