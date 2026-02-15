@@ -121,6 +121,25 @@ class ContainerConfigResponse(BaseResponse):
     data: ContainerCreate
 
 
+class ContainerDependencyCheckRequest(BaseModel):
+    dependencies: List[str]
+
+
+class ContainerDependencyItem(BaseModel):
+    name: str
+    exists: bool
+
+
+class ContainerDependencyCheckResult(BaseModel):
+    all_satisfied: bool
+    missing: List[str]
+    items: List[ContainerDependencyItem]
+
+
+class ContainerDependencyCheckResponse(BaseResponse):
+    data: ContainerDependencyCheckResult
+
+
 class TemplateResponse(BaseResponse):
     data: ContainerConfig
 

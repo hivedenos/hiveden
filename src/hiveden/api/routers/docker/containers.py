@@ -8,6 +8,8 @@ from fastapi.logger import logger
 from fastapi.responses import StreamingResponse
 
 from hiveden.api.dtos import (
+    ContainerDependencyCheckRequest,
+    ContainerDependencyCheckResponse,
     ContainerConfigResponse,
     ContainerCreateResponse,
     ContainerListResponse,
@@ -48,6 +50,7 @@ def create_new_container(container: ContainerCreate):
             name=container.name,
             image=container.image,
             command=container.command,
+            dependencies=container.dependencies,
             env=container.env,
             ports=container.ports,
             mounts=container.mounts,
@@ -62,6 +65,8 @@ def create_new_container(container: ContainerCreate):
         docker_response = get_container(c.id)
 
         return ContainerCreateResponse(data=docker_response)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error creating new container: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -157,9 +162,21 @@ def update_container_configuration(container_id: str, container: ContainerCreate
         # Return new container info
         docker_response = get_container(c.id)
         return ContainerCreateResponse(data=docker_response)
-
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error updating container {container_id}: {e}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/containers/dependencies/check", response_model=ContainerDependencyCheckResponse)
+def check_container_dependencies(payload: ContainerDependencyCheckRequest):
+    from hiveden.docker.containers import DockerManager
+    try:
+        result = DockerManager().check_dependencies(payload.dependencies)
+        return ContainerDependencyCheckResponse(data=result)
+    except Exception as e:
+        logger.error(f"Error checking container dependencies: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -31,6 +31,7 @@ def apply_configuration(config):
                 image=container.image,
                 name=container.name,
                 command=container.command,
+                dependencies=container.dependencies,
                 detach=True,
                 network_name=network_name,
                 env=container.env,

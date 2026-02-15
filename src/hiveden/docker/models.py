@@ -35,6 +35,7 @@ class DockerContainer(BaseModel):
     name: str
     image: str
     command: Optional[List[str]] = None
+    dependencies: Optional[List[str]] = None
     env: Optional[List[EnvVar]] = None
     ports: Optional[List[Port]] = None
     mounts: Optional[List[Mount]] = None

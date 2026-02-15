@@ -7,6 +7,12 @@ from hiveden.apps.pihole import PiHoleManager
 from hiveden.apps.traefik import generate_traefik_labels
 from hiveden.config import config as app_config
 from hiveden.config.utils.domain import get_system_domain_value
+from hiveden.docker.dependencies import (
+    DEPENDENCIES_LABEL_KEY,
+    evaluate_dependencies,
+    parse_dependencies_label,
+    serialize_dependencies_label,
+)
 from hiveden.docker.images import image_exists, pull_image
 from hiveden.docker.models import Container, Device, EnvVar, IngressConfig, Mount, Port
 from hiveden.docker.networks import create_network, network_exists
@@ -67,6 +73,7 @@ class DockerManager:
         name: str,
         image: str,
         command: list[str]|None=None,
+        dependencies: list[str]|None=None,
         network_name=None,
         env: list[EnvVar]|None=None,
         ports: list[Port]|None=None,
@@ -83,6 +90,7 @@ class DockerManager:
         target_network = network_name or self.network_name
         # Use provided app_directory or resolve it
         effective_app_dir = app_directory or self._resolve_app_directory()
+        self.ensure_dependencies_exist(dependencies)
 
         if not image_exists(image):
             print(f"Image '{image}' not found locally. Pulling from registry...")
@@ -98,6 +106,11 @@ class DockerManager:
         container_labels = kwargs.get("labels", {})
         if labels:
             container_labels.update(labels)
+        serialized_dependencies = serialize_dependencies_label(dependencies)
+        if serialized_dependencies:
+            container_labels[DEPENDENCIES_LABEL_KEY] = serialized_dependencies
+        else:
+            container_labels.pop(DEPENDENCIES_LABEL_KEY, None)
 
         if ingress_config:
             # Handle Ingress Configuration
@@ -524,6 +537,25 @@ class DockerManager:
             IPAddress=ip_address,
         )
 
+    def list_existing_container_names(self) -> set[str]:
+        """List all container names known by the local Docker daemon."""
+        names = set()
+        for container in self.client.containers.list(all=True):
+            if container.name:
+                names.add(container.name.lstrip('/'))
+        return names
+
+    def check_dependencies(self, dependencies: list[str] | None) -> dict:
+        """Check whether all dependency container names exist."""
+        return evaluate_dependencies(dependencies or [], self.list_existing_container_names())
+
+    def ensure_dependencies_exist(self, dependencies: list[str] | None):
+        """Raise ValueError when one or more dependency containers are missing."""
+        result = self.check_dependencies(dependencies)
+        if not result["all_satisfied"]:
+            missing = ", ".join(result["missing"])
+            raise ValueError(f"Missing container dependencies: {missing}")
+
 
     def get_container_config(self, container_id):
         """Retrieve the configuration of a container."""
@@ -589,6 +621,9 @@ class DockerManager:
             "name": c.name.lstrip('/'),
             "image": config.get('Image'),
             "command": config.get('Cmd'),
+            "dependencies": parse_dependencies_label(
+                (config.get('Labels') or {}).get(DEPENDENCIES_LABEL_KEY)
+            ),
             "env": env,
             "ports": ports,
             "mounts": mounts,
@@ -622,6 +657,7 @@ class DockerManager:
             name=get_val(config, 'name'),
             image=get_val(config, 'image'),
             command=get_val(config, 'command'),
+            dependencies=get_val(config, 'dependencies'),
             env=get_val(config, 'env'),
             ports=get_val(config, 'ports'),
             mounts=get_val(config, 'mounts'),
@@ -634,8 +670,8 @@ class DockerManager:
 
 
 # Wrappers for backward compatibility
-def create_container(name: str, image: str, command: list[str]|None, env: list[EnvVar]|None, ports: list[Port]|None, mounts: list[Mount]|None, devices: list[Device]|None, labels: dict[str, str]|None, ingress_config: IngressConfig|None, privileged: bool|None, *args, **kwargs):
-    return DockerManager().create_container(name=name, image=image, command=command, env=env, ports=ports, mounts=mounts, devices=devices, labels=labels, ingress_config=ingress_config, privileged=privileged, **kwargs)
+def create_container(name: str, image: str, command: list[str]|None=None, dependencies: list[str]|None=None, env: list[EnvVar]|None=None, ports: list[Port]|None=None, mounts: list[Mount]|None=None, devices: list[Device]|None=None, labels: dict[str, str]|None=None, ingress_config: IngressConfig|None=None, privileged: bool|None=False, *args, **kwargs):
+    return DockerManager().create_container(name=name, image=image, command=command, dependencies=dependencies, env=env, ports=ports, mounts=mounts, devices=devices, labels=labels, ingress_config=ingress_config, privileged=privileged, **kwargs)
 
 def get_container(container_id):
     return DockerManager().get_container(container_id)
