@@ -1,4 +1,5 @@
 from . import (
+    appstore,
     backups,
     config,
     database,

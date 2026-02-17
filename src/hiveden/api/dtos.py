@@ -1,7 +1,7 @@
 from typing import Any, Dict, List, Optional, Union
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from hiveden.docker.models import Container as DockerContainer
 from hiveden.docker.models import ContainerCreate
@@ -190,8 +190,10 @@ class RaidAddDiskRequest(BaseModel):
 class BtrfsShareListResponse(BaseResponse):
     data: List[BtrfsShare]
 
+
 class BtrfsVolumeListResponse(BaseResponse):
     data: List[BtrfsVolume]
+
 
 class LocationListResponse(BaseResponse):
     data: List[FilesystemLocation]
@@ -202,23 +204,29 @@ class IngressContainerInfo(BaseModel):
     id: str
     url: str
 
+
 class DomainInfoResponse(BaseResponse):
     domain: str
     containers: List[IngressContainerInfo]
 
+
 class DomainUpdateRequest(BaseModel):
     domain: str
 
+
 class DomainUpdateResponse(BaseModel):
     updated_containers: List[str]
+
 
 class UpdateLocationRequest(BaseModel):
     new_path: str
     should_migrate_data: bool = False
 
+
 class FileUploadResponse(BaseResponse):
     relative_path: str
     absolute_path: str
+
 
 class DNSConfigResponse(BaseResponse):
     enabled: bool
@@ -226,21 +234,27 @@ class DNSConfigResponse(BaseResponse):
     container_id: Optional[str] = None
     api_key: Optional[str] = None
 
+
 class DNSUpdateRequest(BaseModel):
     api_key: str
 
+
 class MetricsDependenciesConfig(BaseModel):
     containers: List[str]
+
 
 class MetricsConfigResponse(BaseResponse):
     host: Optional[str] = None
     dependencies: MetricsDependenciesConfig
 
+
 class SystemdServiceResponse(BaseResponse):
     data: Optional[SystemdServiceStatus] = None
 
+
 class SystemdServiceListResponse(BaseResponse):
     data: List[SystemdServiceStatus]
+
 
 class DatabaseInfo(BaseModel):
     name: str
@@ -248,25 +262,31 @@ class DatabaseInfo(BaseModel):
     encoding: str
     size_bytes: int
 
+
 class DatabaseUser(BaseModel):
     name: str
     is_superuser: bool
     can_create_role: bool
     can_create_db: bool
 
+
 class DatabaseCreateRequest(BaseModel):
     name: str
     owner: Optional[str] = None
 
+
 class DatabaseListResponse(BaseResponse):
     data: List[DatabaseInfo]
+
 
 class DatabaseUserListResponse(BaseResponse):
     data: List[DatabaseUser]
 
+
 class ImageContainerInfo(BaseModel):
     id: str
     name: str
+
 
 class DockerImage(BaseModel):
     id: str
@@ -276,8 +296,10 @@ class DockerImage(BaseModel):
     labels: Optional[Dict[str, str]] = None
     containers: Optional[List[ImageContainerInfo]] = None
 
+
 class ImageListResponse(BaseResponse):
     data: List[DockerImage]
+
 
 class ImageLayer(BaseModel):
     id: str
@@ -287,49 +309,114 @@ class ImageLayer(BaseModel):
     comment: str
     tags: Optional[List[str]] = None
 
+
 class ImageLayerListResponse(BaseResponse):
     data: List[ImageLayer]
 
+
+class AppSummary(BaseModel):
+    app_id: str
+    title: str
+    version: Optional[str] = None
+    tagline: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    icon: Optional[str] = None
+    icon_url: Optional[str] = None
+    compose_url: Optional[str] = None
+    image_urls: List[str] = Field(default_factory=list)
+    dependencies: List[str] = Field(default_factory=list)
+    repository_path: Optional[str] = None
+    developer: Optional[str] = None
+    installed: bool = False
+    install_status: Optional[str] = None
+
+
+class AppDetail(AppSummary):
+    website: Optional[str] = None
+    repo: Optional[str] = None
+    support: Optional[str] = None
+    dependencies_apps: List[str] = Field(default_factory=list)
+    dependencies_system_packages: List[str] = Field(default_factory=list)
+    manifest_url: Optional[str] = None
+    compose_url: Optional[str] = None
+    source: Dict[str, Any] = Field(default_factory=dict)
+    install: Dict[str, Any] = Field(default_factory=dict)
+    search: Dict[str, Any] = Field(default_factory=dict)
+    dependencies: List[str] = Field(default_factory=list)
+    source_updated_at: Optional[str] = None
+
+
+class AppInstallRequest(BaseModel):
+    auto_install_prereqs: bool = False
+    env_overrides: Optional[Dict[str, str]] = None
+
+
+class AppUninstallRequest(BaseModel):
+    delete_data: bool = False
+    delete_databases: bool = False
+    delete_dns: bool = False
+
+
+class AppSyncResponse(BaseResponse):
+    data: JobInfo
+
+
+class AppInstallResponse(BaseResponse):
+    data: JobInfo
+
+
+class AppListResponse(BaseResponse):
+    data: List[AppSummary]
+
+
+class AppDetailResponse(BaseResponse):
+    data: AppDetail
+
+
 class DataResponse(BaseResponse):
-    data: Optional[Union[
-        DockerContainer,
-        DockerNetwork,
-        DiskDetail,
-        Disk,
-        StorageStrategy,
-        PackageStatus,
-        OSInfo,
-        HWInfo,
-        SystemDevices,
-        LXCContainer,
-        ZFSPool,
-        ZFSDataset,
-        SMBShare,
-        BtrfsVolume,
-        BtrfsSubvolume,
-        BtrfsShare,
-        VersionInfo,
-        JobInfo,
-        List[DockerContainer],
-        List[DockerNetwork],
-        List[Disk],
-        List[StorageStrategy],
-        List[PackageStatus],
-        List[LXCContainer],
-        List[ZFSPool],
-        List[ZFSDataset],
-        List[SMBShare],
-        List[BtrfsVolume],
-        List[BtrfsSubvolume],
-        List[BtrfsShare],
-        List[str],
-        List[Dict[str, Any]],
-        Dict[str, Any],
-        DomainInfoResponse,
-        DomainUpdateResponse,
-        DNSConfigResponse,
-        MetricsConfigResponse
-    ]] = None
+    data: Optional[
+        Union[
+            DockerContainer,
+            DockerNetwork,
+            DiskDetail,
+            Disk,
+            StorageStrategy,
+            PackageStatus,
+            OSInfo,
+            HWInfo,
+            SystemDevices,
+            LXCContainer,
+            ZFSPool,
+            ZFSDataset,
+            SMBShare,
+            BtrfsVolume,
+            BtrfsSubvolume,
+            BtrfsShare,
+            VersionInfo,
+            JobInfo,
+            List[DockerContainer],
+            List[DockerNetwork],
+            List[Disk],
+            List[StorageStrategy],
+            List[PackageStatus],
+            List[LXCContainer],
+            List[ZFSPool],
+            List[ZFSDataset],
+            List[SMBShare],
+            List[BtrfsVolume],
+            List[BtrfsSubvolume],
+            List[BtrfsShare],
+            List[str],
+            List[Dict[str, Any]],
+            Dict[str, Any],
+            DomainInfoResponse,
+            DomainUpdateResponse,
+            DNSConfigResponse,
+            MetricsConfigResponse,
+        ]
+    ] = None
+
 
 class LogEntry(BaseModel):
     id: int
@@ -340,6 +427,7 @@ class LogEntry(BaseModel):
     action: Optional[str] = None
     module: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
+
 
 class LogListResponse(BaseResponse):
     data: List[LogEntry]

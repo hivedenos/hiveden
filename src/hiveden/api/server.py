@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from hiveden.api.routers import (
+    appstore,
     backups,
     config,
     docker,
@@ -49,6 +50,7 @@ app.add_middleware(
 )
 
 app.include_router(backups.router)
+app.include_router(appstore.router)
 app.include_router(config.router)
 app.include_router(database.router)
 app.include_router(docker.router)

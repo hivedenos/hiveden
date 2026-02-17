@@ -2,7 +2,7 @@ import asyncio
 import uuid
 import logging
 from datetime import datetime
-from typing import Dict, List, Optional, AsyncIterator
+from typing import Awaitable, Callable, Dict, List, Optional, AsyncIterator
 
 from hiveden.jobs.models import Job, JobStatus, JobLog
 
@@ -37,6 +37,47 @@ class JobManager:
         asyncio.create_task(self._run_job(job_id, command))
         
         return job_id
+
+    def create_external_job(self, command: str) -> str:
+        """Create a job record managed by external async workflow."""
+        job_id = str(uuid.uuid4())
+        self._jobs[job_id] = Job(id=job_id, command=command)
+        self._subscribers[job_id] = []
+        return job_id
+
+    async def log(self, job_id: str, output: str, error: bool = False):
+        """Append and broadcast a log entry for an existing job."""
+        job = self._jobs.get(job_id)
+        if not job:
+            raise ValueError(f"Job {job_id} not found")
+
+        entry = JobLog(timestamp=datetime.now(), output=output, error=error)
+        job.logs.append(entry)
+        await self._broadcast(job_id, entry)
+
+    async def run_external_job(
+        self,
+        job_id: str,
+        worker: Callable[[str, "JobManager"], Awaitable[None]],
+    ):
+        """Run an externally provided coroutine as a tracked job."""
+        job = self._jobs.get(job_id)
+        if not job:
+            raise ValueError(f"Job {job_id} not found")
+
+        job.status = JobStatus.RUNNING
+        try:
+            await worker(job_id, self)
+            job.status = JobStatus.COMPLETED
+            job.exit_code = 0
+        except Exception as exc:
+            logger.exception("External job %s failed", job_id)
+            job.status = JobStatus.FAILED
+            job.exit_code = 1
+            await self.log(job_id, f"Error: {exc}", error=True)
+        finally:
+            job.finished_at = datetime.now()
+            await self._broadcast(job_id, None)
 
     async def _run_job(self, job_id: str, command: str):
         job = self._jobs[job_id]

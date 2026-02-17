@@ -1,0 +1,2 @@
+"""App store module package."""
+

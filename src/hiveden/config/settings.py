@@ -1,5 +1,6 @@
 import os
 
+
 def _parse_csv_list(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
@@ -17,19 +18,39 @@ class MetricsConfig:
 
 class Config:
     def __init__(self):
-        self.app_directory = os.getenv("HIVEDEN_APP_DIRECTORY", "/hiveden-temp-root/apps")
-        self.movies_directory = os.getenv("HIVEDEN_MOVIES_DIRECTORY", "/hiveden-temp-root/movies")
-        self.tvshows_directory = os.getenv("HIVEDEN_TVSHOWS_DIRECTORY", "/hiveden-temp-root/tvshows")
-        self.backup_directory = os.getenv("HIVEDEN_BACKUP_DIRECTORY", "/hiveden-temp-root/backups")
-        self.pictures_directory = os.getenv("HIVEDEN_PICTURES_DIRECTORY", "/hiveden-temp-root/pictures")
-        self.documents_directory = os.getenv("HIVEDEN_DOCUMENTS_DIRECTORY", "/hiveden-temp-root/documents")
-        self.ebooks_directory = os.getenv("HIVEDEN_EBOOKS_DIRECTORY", "/hiveden-temp-root/ebooks")
-        self.music_directory = os.getenv("HIVEDEN_MUSIC_DIRECTORY", "/hiveden-temp-root/music")
-        self.docker_network_name = os.getenv("HIVEDEN_DOCKER_NETWORK_NAME", "hiveden-net")
+        self.app_directory = os.getenv(
+            "HIVEDEN_APP_DIRECTORY", "/hiveden-temp-root/apps"
+        )
+        self.movies_directory = os.getenv(
+            "HIVEDEN_MOVIES_DIRECTORY", "/hiveden-temp-root/movies"
+        )
+        self.tvshows_directory = os.getenv(
+            "HIVEDEN_TVSHOWS_DIRECTORY", "/hiveden-temp-root/tvshows"
+        )
+        self.backup_directory = os.getenv(
+            "HIVEDEN_BACKUP_DIRECTORY", "/hiveden-temp-root/backups"
+        )
+        self.pictures_directory = os.getenv(
+            "HIVEDEN_PICTURES_DIRECTORY", "/hiveden-temp-root/pictures"
+        )
+        self.documents_directory = os.getenv(
+            "HIVEDEN_DOCUMENTS_DIRECTORY", "/hiveden-temp-root/documents"
+        )
+        self.ebooks_directory = os.getenv(
+            "HIVEDEN_EBOOKS_DIRECTORY", "/hiveden-temp-root/ebooks"
+        )
+        self.music_directory = os.getenv(
+            "HIVEDEN_MUSIC_DIRECTORY", "/hiveden-temp-root/music"
+        )
+        self.docker_network_name = os.getenv(
+            "HIVEDEN_DOCKER_NETWORK_NAME", "hiveden-net"
+        )
         self.domain = os.getenv("HIVEDEN_DOMAIN", "hiveden.local")
 
         # Pi-hole Configuration
-        self.pihole_enabled = os.getenv("HIVEDEN_PIHOLE_ENABLED", "false").lower() == "true"
+        self.pihole_enabled = (
+            os.getenv("HIVEDEN_PIHOLE_ENABLED", "false").lower() == "true"
+        )
         self.pihole_host = os.getenv("HIVEDEN_PIHOLE_HOST", "http://pi.hole")
         self.pihole_password = os.getenv("HIVEDEN_PIHOLE_PASSWORD", "")
 
@@ -45,5 +66,15 @@ class Config:
                 containers=_parse_csv_list(self.metrics_dependencies_containers)
             ),
         )
+
+        # App store catalog configuration
+        self.appstore_index_url = os.getenv(
+            "HIVEDEN_APPSTORE_INDEX_URL",
+            "https://raw.githubusercontent.com/hivedenos/hivedenos-apps/main/data/apps.json",
+        )
+        self.appstore_http_timeout_seconds = int(
+            os.getenv("HIVEDEN_APPSTORE_HTTP_TIMEOUT_SECONDS", "15")
+        )
+
 
 config = Config()
