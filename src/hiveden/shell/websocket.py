@@ -8,7 +8,6 @@ from fastapi.encoders import jsonable_encoder
 import logging
 
 from hiveden.shell.manager import ShellManager
-from hiveden.shell.models import ShellCommand, ShellSessionCreate
 from hiveden.jobs.manager import JobManager
 from hiveden.services.logs import LogService
 
@@ -25,7 +24,7 @@ class ShellWebSocketHandler:
 
     async def connect(self, websocket: WebSocket, session_id: Optional[str] = None):
         """Accept WebSocket connection.
-        
+
         Args:
             websocket: WebSocket connection
             session_id: Optional session ID to associate with connection
@@ -37,7 +36,7 @@ class ShellWebSocketHandler:
 
     def disconnect(self, session_id: str):
         """Disconnect WebSocket.
-        
+
         Args:
             session_id: Session ID to disconnect
         """
@@ -47,52 +46,51 @@ class ShellWebSocketHandler:
 
     async def handle_job_monitoring(self, websocket: WebSocket, job_id: str):
         """Handle WebSocket for job monitoring.
-        
+
         Args:
             websocket: WebSocket connection
             job_id: Job ID to monitor
         """
         await websocket.accept()
         logger.info(f"WebSocket connected for job {job_id}")
-        
+
         try:
             # Send initial job info if needed
             job = self.job_manager.get_job(job_id)
             if not job:
-                await websocket.send_json({
-                    "type": "error",
-                    "message": f"Job {job_id} not found"
-                })
+                await websocket.send_json(
+                    {"type": "error", "message": f"Job {job_id} not found"}
+                )
                 await websocket.close()
                 return
 
-            await websocket.send_json({
-                "type": "job_info",
-                "data": jsonable_encoder(job.dict(exclude={'logs'}))
-            })
+            await websocket.send_json(
+                {
+                    "type": "job_info",
+                    "data": jsonable_encoder(job.dict(exclude={"logs"})),
+                }
+            )
 
             # Subscribe to job logs
             async for log in self.job_manager.subscribe(job_id):
-                await websocket.send_json({
-                    "type": "log",
-                    "data": jsonable_encoder(log)
-                })
-                
+                await websocket.send_json(
+                    {"type": "log", "data": jsonable_encoder(log)}
+                )
+
             # Send completion message
             # Refresh job status to get final state
             job = self.job_manager.get_job(job_id)
-            await websocket.send_json({
-                "type": "job_completed",
-                "data": jsonable_encoder(job.dict(exclude={'logs'}))
-            })
-            
+            await websocket.send_json(
+                {
+                    "type": "job_completed",
+                    "data": jsonable_encoder(job.dict(exclude={"logs"})),
+                }
+            )
+
         except Exception as e:
             logger.error(f"Error monitoring job {job_id}: {str(e)}")
             try:
-                await websocket.send_json({
-                    "type": "error",
-                    "message": str(e)
-                })
+                await websocket.send_json({"type": "error", "message": str(e)})
             except:
                 pass
         finally:
@@ -103,137 +101,146 @@ class ShellWebSocketHandler:
 
     async def handle_session(self, websocket: WebSocket, session_id: str):
         """Handle WebSocket messages for a shell session.
-        
+
         Args:
             websocket: WebSocket connection
             session_id: Session ID
         """
         await self.connect(websocket, session_id)
-        
+
+        output_task: Optional[asyncio.Task] = None
+
         try:
             # Verify session exists
             session = self.shell_manager.get_session(session_id)
             if not session:
-                await websocket.send_json({
-                    "type": "error",
-                    "message": f"Session {session_id} not found"
-                })
+                await websocket.send_json(
+                    {"type": "error", "message": f"Session {session_id} not found"}
+                )
                 await websocket.close()
                 return
-            
+
             # Send session info
-            await websocket.send_json({
-                "type": "session_info",
-                "data": jsonable_encoder(session.dict())
-            })
-            
-            # Send initial prompt
-            await self._send_prompt(websocket, session_id)
-            
-            command_buffer = ""
-            
+            await websocket.send_json(
+                {"type": "session_info", "data": jsonable_encoder(session.dict())}
+            )
+
+            await self.shell_manager.start_interactive_session(
+                session_id=session_id,
+                cols=120,
+                rows=30,
+            )
+            output_task = asyncio.create_task(
+                self._forward_interactive_output(websocket, session_id)
+            )
+
             # Handle incoming messages
             while True:
                 try:
                     # Receive message from client
                     data = await websocket.receive_json()
                     message_type = data.get("type")
-                    
+
                     if message_type == "command":
-                        # Execute command and stream output
                         command = data.get("command", "")
-                        await self._execute_and_stream(websocket, session_id, command)
-                        await self._send_prompt(websocket, session_id)
+                        if command:
+                            await websocket.send_json(
+                                {"type": "command_started", "command": command}
+                            )
+                            await self.shell_manager.send_interactive_input(
+                                session_id,
+                                command,
+                            )
+                            await self.shell_manager.send_interactive_input(
+                                session_id,
+                                "\n",
+                            )
+                            await websocket.send_json(
+                                {"type": "command_completed", "command": command}
+                            )
 
                     elif message_type == "input":
-                        # Handle interactive input (xterm.js style)
-                        # content usually comes in 'data' or 'input' field
                         content = data.get("data") or data.get("input") or ""
-                        
-                        # Echo input back to client so they see what they type
-                        # (Local echo is often disabled in term libraries connected to WS)
-                        await websocket.send_json({
-                            "type": "output",
-                            "data": {
-                                "session_id": session_id,
-                                "output": content,
-                                "error": False
-                            }
-                        })
-                        
-                        command_buffer += content
-                        
-                        # Check for Enter key (Carriage Return)
-                        if "\r" in content:
-                            # Extract command (remove newlines)
-                            cmd = command_buffer.strip()
-                            command_buffer = ""
-                            
-                            # If we have a command, execute it
-                            if cmd:
-                                # Add a newline before execution output to look clean
-                                await websocket.send_json({
-                                    "type": "output",
-                                    "data": {
-                                        "session_id": session_id,
-                                        "output": "\n",
-                                        "error": False
-                                    }
-                                })
-                                await self._execute_and_stream(websocket, session_id, cmd)
-                                await self._send_prompt(websocket, session_id)
-                            else:
-                                # Just enter pressed (empty command), show prompt again
-                                await websocket.send_json({
-                                    "type": "output",
-                                    "data": {
-                                        "session_id": session_id,
-                                        "output": "\n",
-                                        "error": False
-                                    }
-                                })
-                                await self._send_prompt(websocket, session_id)
-                    
+                        if content:
+                            await self.shell_manager.send_interactive_input(
+                                session_id,
+                                content,
+                            )
+
+                    elif message_type == "resize":
+                        cols = data.get("cols") or data.get("columns") or 120
+                        rows = data.get("rows") or data.get("height") or 30
+                        await self.shell_manager.resize_interactive_session(
+                            session_id,
+                            cols=int(cols),
+                            rows=int(rows),
+                        )
+
                     elif message_type == "ping":
-                        # Respond to ping
                         await websocket.send_json({"type": "pong"})
-                    
+
                     elif message_type == "close":
-                        # Close session
                         self.shell_manager.close_session(session_id)
-                        await websocket.send_json({
-                            "type": "session_closed",
-                            "session_id": session_id
-                        })
+                        await websocket.send_json(
+                            {"type": "session_closed", "session_id": session_id}
+                        )
                         break
-                    
+
                     else:
-                        await websocket.send_json({
-                            "type": "error",
-                            "message": f"Unknown message type: {message_type}"
-                        })
-                
+                        await websocket.send_json(
+                            {
+                                "type": "error",
+                                "message": f"Unknown message type: {message_type}",
+                            }
+                        )
+
                 except WebSocketDisconnect:
                     logger.info(f"WebSocket disconnected for session {session_id}")
                     break
                 except json.JSONDecodeError:
-                    await websocket.send_json({
-                        "type": "error",
-                        "message": "Invalid JSON"
-                    })
+                    await websocket.send_json(
+                        {"type": "error", "message": "Invalid JSON"}
+                    )
                 except Exception as e:
                     logger.error(f"Error handling message: {str(e)}")
-                    await websocket.send_json({
-                        "type": "error",
-                        "message": str(e)
-                    })
-        
+                    try:
+                        await websocket.send_json({"type": "error", "message": str(e)})
+                    except Exception:
+                        break
+
         finally:
+            if output_task:
+                output_task.cancel()
+                await asyncio.gather(output_task, return_exceptions=True)
+            await self.shell_manager.stop_interactive_session(session_id)
             self.disconnect(session_id)
 
-    async def _execute_and_stream(self, websocket: WebSocket, session_id: str, command: str):
+    async def _forward_interactive_output(self, websocket: WebSocket, session_id: str):
+        """Forward interactive shell stream to the websocket client."""
+        try:
+            async for output in self.shell_manager.stream_interactive_output(
+                session_id
+            ):
+                await websocket.send_json(
+                    {"type": "output", "data": jsonable_encoder(output.dict())}
+                )
+        except Exception as e:
+            logger.error(f"Error streaming interactive output: {str(e)}")
+            try:
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "message": str(e),
+                    }
+                )
+            except Exception:
+                pass
+
+    async def _execute_and_stream(
+        self, websocket: WebSocket, session_id: str, command: str
+    ):
         """Execute command and stream output to WebSocket.
-        
+
         Args:
             websocket: WebSocket connection
             session_id: Session ID
@@ -241,78 +248,76 @@ class ShellWebSocketHandler:
         """
         try:
             # Send command acknowledgment
-            await websocket.send_json({
-                "type": "command_started",
-                "command": command
-            })
-            
+            await websocket.send_json({"type": "command_started", "command": command})
+
             # Execute command and stream output
-            async for output in self.shell_manager.execute_command_stream(session_id, command):
-                await websocket.send_json({
-                    "type": "output",
-                    "data": jsonable_encoder(output.dict())
-                })
-            
+            async for output in self.shell_manager.execute_command_stream(
+                session_id, command
+            ):
+                await websocket.send_json(
+                    {"type": "output", "data": jsonable_encoder(output.dict())}
+                )
+
             # Send command completion
-            await websocket.send_json({
-                "type": "command_completed",
-                "command": command
-            })
-        
+            await websocket.send_json({"type": "command_completed", "command": command})
+
         except Exception as e:
             logger.error(f"Error executing command: {str(e)}")
-            await websocket.send_json({
-                "type": "error",
-                "message": f"Error executing command: {str(e)}"
-            })
+            await websocket.send_json(
+                {"type": "error", "message": f"Error executing command: {str(e)}"}
+            )
 
-    async def handle_package_install(self, websocket: WebSocket, package_name: str, package_manager: str = "auto"):
+    async def handle_package_install(
+        self, websocket: WebSocket, package_name: str, package_manager: str = "auto"
+    ):
         """Handle package installation with real-time output.
-        
+
         Args:
             websocket: WebSocket connection
             package_name: Package to install
             package_manager: Package manager to use
         """
         await self.connect(websocket)
-        
+
         try:
             LogService().info(
                 actor="user",
                 action="pkgs.install",
                 message=f"Started installing package {package_name}",
                 module="pkgs",
-                metadata={"package": package_name, "manager": package_manager}
+                metadata={"package": package_name, "manager": package_manager},
             )
 
             # Send installation started message
-            await websocket.send_json({
-                "type": "install_started",
-                "package": package_name,
-                "package_manager": package_manager
-            })
-            
+            await websocket.send_json(
+                {
+                    "type": "install_started",
+                    "package": package_name,
+                    "package_manager": package_manager,
+                }
+            )
+
             # Stream installation output
-            async for output in self.shell_manager.install_package_stream(package_name, package_manager):
-                await websocket.send_json({
-                    "type": "output",
-                    "data": jsonable_encoder(output.dict())
-                })
+            async for output in self.shell_manager.install_package_stream(
+                package_name, package_manager
+            ):
+                await websocket.send_json(
+                    {"type": "output", "data": jsonable_encoder(output.dict())}
+                )
 
             LogService().info(
                 actor="user",
                 action="pkgs.install.complete",
                 message=f"Completed installation of package {package_name}",
                 module="pkgs",
-                metadata={"package": package_name}
+                metadata={"package": package_name},
             )
-            
+
             # Send installation completed
-            await websocket.send_json({
-                "type": "install_completed",
-                "package": package_name
-            })
-        
+            await websocket.send_json(
+                {"type": "install_completed", "package": package_name}
+            )
+
         except Exception as e:
             LogService().error(
                 actor="user",
@@ -320,28 +325,12 @@ class ShellWebSocketHandler:
                 message=f"Error installing package {package_name}",
                 module="pkgs",
                 error_details=str(e),
-                metadata={"package": package_name}
+                metadata={"package": package_name},
             )
             logger.error(f"Error installing package: {str(e)}")
-            await websocket.send_json({
-                "type": "error",
-                "message": f"Error installing package: {str(e)}"
-            })
-        
+            await websocket.send_json(
+                {"type": "error", "message": f"Error installing package: {str(e)}"}
+            )
+
         finally:
             await websocket.close()
-
-    async def _send_prompt(self, websocket: WebSocket, session_id: str):
-        """Send a shell prompt to the client."""
-        session = self.shell_manager.get_session(session_id)
-        if session:
-            prompt_suffix = "# " if session.user == "root" else "$ "
-            prompt = f"{session.user}@{session.target}:{session.working_dir}{prompt_suffix}"
-            await websocket.send_json({
-                "type": "output",
-                "data": {
-                    "session_id": session_id,
-                    "output": prompt,
-                    "error": False
-                }
-            })

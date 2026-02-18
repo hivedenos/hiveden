@@ -3,7 +3,10 @@ from typing import Any, Dict, Optional
 from urllib.request import Request, urlopen
 
 from hiveden.appstore.catalog_service import AppCatalogService
-from hiveden.appstore.compose_translator import parse_compose_yaml, translate_compose_services
+from hiveden.appstore.compose_translator import (
+    parse_compose_yaml,
+    translate_compose_services,
+)
 from hiveden.docker.containers import DockerManager
 from hiveden.jobs.manager import JobManager
 from hiveden.pkgs.manager import get_package_manager
