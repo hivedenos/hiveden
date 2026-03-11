@@ -1,5 +1,6 @@
 from typing import Optional
-from pydantic import BaseModel
+from hiveden.pydantic_compat import BaseModel
+
 
 class SystemdServiceStatus(BaseModel):
     name: str
@@ -10,6 +11,7 @@ class SystemdServiceStatus(BaseModel):
     unit_file_state: str  # e.g., 'enabled', 'disabled'
     main_pid: Optional[int] = None
     since: Optional[str] = None
+
 
 class ServiceActionRequest(BaseModel):
     action: str  # start, stop, restart, enable, disable

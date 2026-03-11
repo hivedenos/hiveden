@@ -1,7 +1,8 @@
 from enum import Enum
 from typing import List, Optional
-from pydantic import BaseModel
+from hiveden.pydantic_compat import BaseModel
 from datetime import datetime
+
 
 class JobStatus(str, Enum):
     PENDING = "pending"
@@ -9,10 +10,12 @@ class JobStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
 
+
 class JobLog(BaseModel):
     timestamp: datetime
     output: str
     error: bool = False
+
 
 class Job(BaseModel):
     id: str

@@ -1,7 +1,9 @@
 from typing import Any, Dict, List, Optional, Union
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from hiveden.pydantic_compat import BaseModel
 
 from hiveden.docker.models import Container as DockerContainer
 from hiveden.docker.models import ContainerCreate

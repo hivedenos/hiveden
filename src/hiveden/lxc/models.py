@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import List, Optional
-from pydantic import BaseModel
+from hiveden.pydantic_compat import BaseModel
+
 
 @dataclass
 class Resources:
@@ -10,21 +11,25 @@ class Resources:
     os: Optional[str]
     version: Optional[str]
 
+
 @dataclass
 class InstallMethod:
     type: str
     script: str
     resources: Resources
 
+
 @dataclass
 class DefaultCredentials:
     username: Optional[str]
     password: Optional[str]
 
+
 @dataclass
 class Note:
     text: str
     type: str
+
 
 @dataclass
 class Script:
@@ -52,6 +57,7 @@ class Script:
                 return method.script
         return None
 
+
 @dataclass
 class Category:
     name: str
@@ -60,6 +66,7 @@ class Category:
     description: str
     icon: str
     scripts: List[Script]
+
 
 class LXCContainer(BaseModel):
     name: str

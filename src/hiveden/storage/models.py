@@ -1,11 +1,13 @@
 from typing import List, Optional, Literal
-from pydantic import BaseModel
+from hiveden.pydantic_compat import BaseModel
+
 
 class MountPoint(BaseModel):
     path: str
     options: Optional[str] = None
     fstype: Optional[str] = None
     source: Optional[str] = None
+
 
 class Partition(BaseModel):
     name: str
@@ -15,6 +17,7 @@ class Partition(BaseModel):
     uuid: Optional[str] = None
     mountpoint: Optional[str] = None
     mountpoints: List[MountPoint] = []
+
 
 class Disk(BaseModel):
     name: str
@@ -29,6 +32,7 @@ class Disk(BaseModel):
     raid_group: Optional[str] = None  # Name of the RAID array (e.g., md0)
     raid_level: Optional[str] = None  # RAID level (e.g., raid1)
 
+
 class SmartData(BaseModel):
     healthy: bool
     health_status: str
@@ -41,10 +45,12 @@ class SmartData(BaseModel):
     rotation_rate: Optional[int] = None
     attributes: List[dict] = []  # Raw attributes list
 
+
 class DiskDetail(Disk):
     vendor: Optional[str] = None
     bus: Optional[str] = None  # ATA, USB, NVMe, etc.
     smart: Optional[SmartData] = None
+
 
 class StorageStrategy(BaseModel):
     name: str
@@ -54,11 +60,13 @@ class StorageStrategy(BaseModel):
     usable_capacity: int
     redundancy: str  # Description of redundancy (e.g. "1 drive failure")
 
+
 class Share(BaseModel):
     name: str
     path: str
     pool_name: str
     snapshots_enabled: bool = True
+
 
 class MountRequest(BaseModel):
     device: str

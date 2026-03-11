@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel
+from hiveden.pydantic_compat import BaseModel
+
 
 class Module(BaseModel):
     id: Optional[int] = None

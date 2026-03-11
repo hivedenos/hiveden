@@ -1,12 +1,13 @@
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from pydantic import BaseModel
+from hiveden.pydantic_compat import BaseModel
 
 
 class EnvVar(BaseModel):
     name: str
     value: str
+
 
 class Port(BaseModel):
     host_port: int
@@ -21,10 +22,12 @@ class Mount(BaseModel):
     is_app_directory: bool = False
     read_only: bool = False
 
+
 class Device(BaseModel):
     path_on_host: str
     path_in_container: str
     cgroup_permissions: str = "rwm"
+
 
 class IngressConfig(BaseModel):
     domain: str
@@ -44,26 +47,32 @@ class DockerContainer(BaseModel):
     ingress_config: Optional[IngressConfig] = None
     privileged: Optional[bool] = False
 
+
 class ContainerCreate(DockerContainer):
     is_container: bool = True
     enabled: bool = True
     type: str = "docker"
+
 
 class TemplateCreate(DockerContainer):
     is_container: bool = False
     enabled: bool = True
     type: str = "template"
 
+
 class NetworkCreate(BaseModel):
     name: str
+
 
 class HostConfig(BaseModel):
     NetworkMode: str
     Privileged: bool = False
 
+
 class NetworkSettings(BaseModel):
     Ports: Dict
     Networks: Dict
+
 
 class Container(BaseModel):
     Id: str
@@ -79,6 +88,7 @@ class Container(BaseModel):
     NetworkSettings: NetworkSettings
     HostConfig: HostConfig
     IPAddress: Optional[str] = None
+
 
 class Network(BaseModel):
     Name: str

@@ -1,5 +1,6 @@
 from typing import List, Optional
-from pydantic import BaseModel
+from hiveden.pydantic_compat import BaseModel
+
 
 class SMBShare(BaseModel):
     name: str
@@ -9,11 +10,14 @@ class SMBShare(BaseModel):
     browsable: bool = True
     guest_ok: bool = False
 
+
 class ZFSPool(BaseModel):
     name: str
 
+
 class ZFSDataset(BaseModel):
     name: str
+
 
 class BtrfsVolume(BaseModel):
     device: str
@@ -22,11 +26,13 @@ class BtrfsVolume(BaseModel):
     parent_path: Optional[str] = None
     uuid: Optional[str] = None
 
+
 class BtrfsSubvolume(BaseModel):
     id: int
     parent_id: int
     path: str
     name: str
+
 
 class BtrfsShare(BaseModel):
     name: str

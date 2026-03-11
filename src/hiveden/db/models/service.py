@@ -1,6 +1,9 @@
 from datetime import datetime
 from typing import Optional, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from hiveden.pydantic_compat import BaseModel
+
 
 class ServiceTemplate(BaseModel):
     id: Optional[int] = None
@@ -13,6 +16,7 @@ class ServiceTemplate(BaseModel):
     maintainer: str = "hiveden"
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
 
 class ManagedService(BaseModel):
     id: Optional[int] = None

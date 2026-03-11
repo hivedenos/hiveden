@@ -1,6 +1,7 @@
 from typing import Dict, List, Optional, Any
-from pydantic import BaseModel
+from hiveden.pydantic_compat import BaseModel
 from hiveden.storage.models import Disk
+
 
 class OSInfo(BaseModel):
     system: str
@@ -10,6 +11,7 @@ class OSInfo(BaseModel):
     processor: str
     hostname: str
 
+
 class NetworkAddress(BaseModel):
     address: str
     netmask: Optional[str] = None
@@ -17,8 +19,10 @@ class NetworkAddress(BaseModel):
     ptp: Optional[str] = None
     family: str
 
+
 class NetworkInterface(BaseModel):
     addresses: List[NetworkAddress]
+
 
 class NetworkIOCounters(BaseModel):
     bytes_sent: int
@@ -30,10 +34,12 @@ class NetworkIOCounters(BaseModel):
     dropin: int
     dropout: int
 
+
 class NetworkInfo(BaseModel):
     interfaces: Dict[str, NetworkInterface]
     io_counters: NetworkIOCounters
     primary_ip: str
+
 
 class HWInfo(BaseModel):
     cpu: Dict
@@ -41,15 +47,16 @@ class HWInfo(BaseModel):
     disk: Dict
     network: NetworkInfo
 
+
 class GenericDevice(BaseModel):
     id: str
-    name: str # product name usually
+    name: str  # product name usually
     vendor: Optional[str] = None
     product: Optional[str] = None
     description: Optional[str] = None
     driver: Optional[str] = None
     bus_info: Optional[str] = None
-    
+
     # Detailed fields
     logical_name: Optional[str] = None
     version: Optional[str] = None
@@ -58,9 +65,10 @@ class GenericDevice(BaseModel):
     clock: Optional[int] = None
     capabilities: Optional[Dict[str, Any]] = None
     configuration: Optional[Dict[str, Any]] = None
-    
+
     # Raw children or extra info if needed, but keeping it flat is better for UI
-    
+
+
 class SystemDevices(BaseModel):
     summary: Dict[str, Any]
     storage: List[Disk]

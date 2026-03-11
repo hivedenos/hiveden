@@ -1,6 +1,8 @@
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from hiveden.pydantic_compat import BaseModel
 
 
 class AppCatalogEntry(BaseModel):
