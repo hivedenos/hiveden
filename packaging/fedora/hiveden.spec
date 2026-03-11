@@ -28,7 +28,7 @@ Requires:       python3-paramiko
 Requires:       python3-websockets
 Requires:       python3-psycopg2
 Requires:       python3-APScheduler
-Requires:       python3-python-multipart
+Requires:       python3-multipart
 Requires:       lshw
 Requires:       samba
 Requires:       cifs-utils
