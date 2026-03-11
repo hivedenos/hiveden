@@ -29,8 +29,12 @@ class AppAdoptionService:
         app = self.catalog.get_app(app_id)
         if not app:
             raise ValueError(f"App '{app_id}' was not found in catalog")
+        if not app.installable:
+            raise ValueError(
+                app.install_block_reason or f"App '{app.app_id}' cannot be installed"
+            )
         if app.install_status in {"installing", "uninstalling"}:
-            raise ValueError(f"App '{app_id}' is currently {app.install_status}")
+            raise ValueError(f"App '{app.app_id}' is currently {app.install_status}")
 
         identifiers = [
             item.strip() for item in container_names_or_ids if item and item.strip()
@@ -76,18 +80,18 @@ class AppAdoptionService:
             raise ValueError("No valid containers were provided")
 
         if replace_existing:
-            self.catalog.delete_resources_by_type(app_id, "container")
+            self.catalog.delete_resources_by_type(app.catalog_id, "container")
         else:
             for container in resolved:
                 self.catalog.delete_resource(
-                    app_id=app_id,
+                    app_id=app.catalog_id,
                     resource_type="container",
                     resource_name=container.Name,
                 )
 
         for container in resolved:
             self.catalog.add_resource(
-                app_id=app_id,
+                app_id=app.catalog_id,
                 resource_type="container",
                 resource_name=container.Name,
                 metadata={
@@ -99,7 +103,7 @@ class AppAdoptionService:
             )
 
         self.catalog.set_installation_status(
-            app_id=app_id,
+            app_id=app.catalog_id,
             status="installed",
             installed_version=app.version,
             last_error=None,

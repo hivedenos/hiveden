@@ -25,34 +25,38 @@ def test_fetch_catalog_accepts_new_catalog_contract():
       "version": "1.0.0",
       "generated_at": "2026-01-01T00:00:00Z",
       "total_apps": 1,
-      "apps": [
-        {
-          "id": "bitcoin",
-          "name": "Bitcoin",
-          "version": "1.0.0",
-          "tagline": "Node",
-          "description": "Bitcoin node",
-          "repository_path": "apps/bitcoin",
-          "icon_url": "https://raw.example/icon.png",
-          "image_urls": [],
-          "source": {
-            "id": "umbrel",
-            "repo": "https://github.com/getumbrel/umbrel-apps.git",
-            "commit": "abc123",
-            "path": "bitcoin"
-          },
-          "install": {
-            "method": "docker-compose",
-            "files": ["bitcoin/docker-compose.yml"]
-          },
-          "search": {
-            "keywords": ["bitcoin"],
-            "categories": ["finance"]
-          },
-          "dependencies": [],
-          "updated_at": "2026-01-01T00:00:00Z"
-        }
-      ]
+      "apps": [],
+      "apps_by_channel": {
+        "stable": [
+          {
+            "id": "bitcoin",
+            "name": "Bitcoin",
+            "version": "1.0.0",
+            "tagline": "Node",
+            "description": "Bitcoin node",
+            "channel": "stable",
+            "repository_path": "apps/stable/bitcoin",
+            "icon_url": "apps/stable/bitcoin/img/icon.png",
+            "image_urls": [],
+            "source": {
+              "id": "umbrel",
+              "repo": "https://github.com/getumbrel/umbrel-apps.git",
+              "commit": "abc123",
+              "path": "bitcoin"
+            },
+            "install": {
+              "method": "docker-compose",
+              "files": ["bitcoin/docker-compose.yml"]
+            },
+            "search": {
+              "keywords": ["bitcoin"],
+              "categories": ["finance"]
+            },
+            "dependencies": [],
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        ]
+      }
     }
     """
 
@@ -62,7 +66,7 @@ def test_fetch_catalog_accepts_new_catalog_contract():
         data = CatalogClient().fetch_catalog("https://raw.example/apps.json")
 
     assert data["total_apps"] == 1
-    assert data["apps"][0]["id"] == "bitcoin"
+    assert data["apps_by_channel"]["stable"][0]["id"] == "bitcoin"
 
 
 def test_fetch_catalog_rejects_missing_required_top_level_key():

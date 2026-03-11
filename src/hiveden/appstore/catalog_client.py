@@ -29,6 +29,10 @@ class CatalogClient:
         if not isinstance(apps, list):
             raise ValueError("Catalog payload 'apps' must be an array")
 
+        apps_by_channel = data.get("apps_by_channel")
+        if apps_by_channel is not None and not isinstance(apps_by_channel, dict):
+            raise ValueError("Catalog payload 'apps_by_channel' must be an object")
+
         required_app_keys = [
             "id",
             "name",
@@ -45,6 +49,18 @@ class CatalogClient:
             "updated_at",
         ]
 
+        self._validate_app_list(apps, required_app_keys)
+
+        if isinstance(apps_by_channel, dict):
+            for channel, channel_apps in apps_by_channel.items():
+                if not isinstance(channel_apps, list):
+                    raise ValueError(
+                        "Catalog channel "
+                        f"'{channel}' payload 'apps_by_channel' must be an array"
+                    )
+                self._validate_app_list(channel_apps, required_app_keys)
+
+    def _validate_app_list(self, apps: list, required_app_keys: list[str]):
         for index, app in enumerate(apps):
             if not isinstance(app, dict):
                 raise ValueError(f"Catalog app at index {index} must be an object")

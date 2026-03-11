@@ -3,11 +3,19 @@ from typing import Any, Dict, List, Optional
 
 from psycopg2.extras import Json
 
-from hiveden.appstore.models import AppCatalogEntry, CatalogSyncResult
+from hiveden.appstore.models import (
+    AppCacheClearResult,
+    AppCatalogEntry,
+    CatalogSyncResult,
+)
 from hiveden.db.session import get_db_manager
 
 
 CATALOG_RAW_BASE_URL = "https://raw.githubusercontent.com/hivedenos/hivedenos-apps/main"
+INCUBATOR_INSTALL_BLOCK_REASON = (
+    "Incubator apps are visible for discovery only and cannot be installed "
+    "until promoted to a supported channel."
+)
 
 
 class AppCatalogService:
@@ -27,23 +35,27 @@ class AppCatalogService:
                 cursor.execute(
                     """
                     INSERT INTO app_catalog_entries (
-                        app_id, title, version, tagline, description, category, icon,
+                        catalog_id, app_id, title, version, tagline, description, category, icon,
                         developer, website, repo, support, dependencies_apps,
                         dependencies_system_packages, manifest_url, compose_url,
                         compose_sha256, repository_path, icon_url, image_urls,
                         source, install, search, dependencies, source_updated_at,
-                        raw_manifest, updated_at
+                        raw_manifest, channel, channel_label, risk_level,
+                        support_tier, origin_channel, promotion_status, updated_at
                     ) VALUES (
-                        %(app_id)s, %(title)s, %(version)s, %(tagline)s, %(description)s, %(category)s, %(icon)s,
+                        %(catalog_id)s, %(app_id)s, %(title)s, %(version)s, %(tagline)s, %(description)s, %(category)s, %(icon)s,
                         %(developer)s, %(website)s, %(repo)s, %(support)s, %(dependencies_apps)s,
                         %(dependencies_system_packages)s, %(manifest_url)s, %(compose_url)s,
                         %(compose_sha256)s, %(repository_path)s, %(icon_url)s,
                         %(image_urls)s, %(source)s, %(install)s, %(search)s,
                         %(dependencies)s, %(source_updated_at)s, %(raw_manifest)s,
+                        %(channel)s, %(channel_label)s, %(risk_level)s,
+                        %(support_tier)s, %(origin_channel)s, %(promotion_status)s,
                         CURRENT_TIMESTAMP
                     )
-                    ON CONFLICT (app_id) DO UPDATE SET
+                    ON CONFLICT (catalog_id) DO UPDATE SET
                         title = EXCLUDED.title,
+                        app_id = EXCLUDED.app_id,
                         version = EXCLUDED.version,
                         tagline = EXCLUDED.tagline,
                         description = EXCLUDED.description,
@@ -67,6 +79,12 @@ class AppCatalogService:
                         dependencies = EXCLUDED.dependencies,
                         source_updated_at = EXCLUDED.source_updated_at,
                         raw_manifest = EXCLUDED.raw_manifest,
+                        channel = EXCLUDED.channel,
+                        channel_label = EXCLUDED.channel_label,
+                        risk_level = EXCLUDED.risk_level,
+                        support_tier = EXCLUDED.support_tier,
+                        origin_channel = EXCLUDED.origin_channel,
+                        promotion_status = EXCLUDED.promotion_status,
                         updated_at = CURRENT_TIMESTAMP
                     """,
                     entry,
@@ -81,6 +99,7 @@ class AppCatalogService:
         self,
         q: Optional[str] = None,
         category: Optional[str] = None,
+        channel: Optional[str] = None,
         installed: Optional[bool] = None,
         limit: int = 50,
         offset: int = 0,
@@ -100,6 +119,9 @@ class AppCatalogService:
             if category:
                 filters.append("c.category = %s")
                 params.append(category)
+            if channel:
+                filters.append("c.channel = %s")
+                params.append(channel)
             if installed is True:
                 filters.append("COALESCE(i.status, 'not_installed') = 'installed'")
             elif installed is False:
@@ -110,7 +132,7 @@ class AppCatalogService:
             query = f"""
                 SELECT c.*, i.status AS install_status
                 FROM app_catalog_entries c
-                LEFT JOIN app_installations i ON i.app_id = c.app_id
+                LEFT JOIN app_installations i ON i.app_id = c.catalog_id
                 {where}
                 ORDER BY c.title ASC
                 LIMIT %s OFFSET %s
@@ -122,6 +144,21 @@ class AppCatalogService:
             conn.close()
 
     def get_app(self, app_id: str) -> Optional[AppCatalogEntry]:
+        direct_match = self._get_app_by_catalog_id(app_id)
+        if direct_match:
+            return direct_match
+
+        matches = self._list_apps_by_app_id(app_id)
+        if len(matches) == 1:
+            return matches[0]
+
+        installable_matches = [item for item in matches if item.installable]
+        if len(installable_matches) == 1:
+            return installable_matches[0]
+
+        return None
+
+    def _get_app_by_catalog_id(self, catalog_id: str) -> Optional[AppCatalogEntry]:
         conn = self.db.get_connection()
         try:
             cursor = conn.cursor()
@@ -129,18 +166,51 @@ class AppCatalogService:
                 """
                 SELECT c.*, i.status AS install_status
                 FROM app_catalog_entries c
-                LEFT JOIN app_installations i ON i.app_id = c.app_id
-                WHERE c.app_id = %s
+                LEFT JOIN app_installations i ON i.app_id = c.catalog_id
+                WHERE c.catalog_id = %s
                 """,
-                (app_id,),
+                (catalog_id,),
             )
             row = cursor.fetchone()
             return self._row_to_entry(dict(row)) if row else None
         finally:
             conn.close()
 
+    def _list_apps_by_app_id(self, app_id: str) -> List[AppCatalogEntry]:
+        conn = self.db.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT c.*, i.status AS install_status
+                FROM app_catalog_entries c
+                LEFT JOIN app_installations i ON i.app_id = c.catalog_id
+                WHERE c.app_id = %s
+                ORDER BY c.channel ASC, c.title ASC
+                """,
+                (app_id,),
+            )
+            rows = cursor.fetchall()
+            return [self._row_to_entry(dict(row)) for row in rows]
+        finally:
+            conn.close()
+
     def list_installed_apps(self) -> List[AppCatalogEntry]:
         return self.list_apps(installed=True, limit=500, offset=0)
+
+    def clear_catalog_cache(self) -> AppCacheClearResult:
+        conn = self.db.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) AS total FROM app_catalog_entries")
+            row = cursor.fetchone()
+            row_payload = dict(row) if row else {}
+            cleared_entries = int(row_payload.get("total") or 0)
+            cursor.execute("DELETE FROM app_catalog_entries")
+            conn.commit()
+            return AppCacheClearResult(cleared_entries=cleared_entries)
+        finally:
+            conn.close()
 
     def set_installation_status(
         self,
@@ -270,12 +340,14 @@ class AppCatalogService:
                 tuple(params),
             )
             rows = cursor.fetchall()
-            return [row["app_id"] for row in rows if row.get("app_id")]
+            row_payloads = [dict(row) for row in rows]
+            return [row["app_id"] for row in row_payloads if row.get("app_id")]
         finally:
             conn.close()
 
     def _row_to_entry(self, row: Dict[str, Any]) -> AppCatalogEntry:
         install_status = row.get("install_status") or "not_installed"
+        channel = row.get("channel") or "stable"
         row_dependencies_apps = row.get("dependencies_apps") or []
         row_dependencies_system_packages = row.get("dependencies_system_packages") or []
         row_dependencies = row.get("dependencies") or []
@@ -345,6 +417,7 @@ class AppCatalogService:
                 row_image_urls.append(resolved_url)
 
         payload = {
+            "catalog_id": row.get("catalog_id") or self._build_catalog_id(row),
             "app_id": row["app_id"],
             "title": row["title"],
             "version": row.get("version"),
@@ -370,8 +443,17 @@ class AppCatalogService:
             "dependencies": row_dependencies,
             "source_updated_at": source_updated_at_value,
             "raw_manifest": row.get("raw_manifest") or {},
+            "channel": channel,
+            "channel_label": row.get("channel_label"),
+            "risk_level": row.get("risk_level"),
+            "support_tier": row.get("support_tier"),
+            "origin_channel": row.get("origin_channel"),
+            "promotion_status": row.get("promotion_status"),
             "installed": install_status == "installed",
             "install_status": install_status,
+            "installable": self._is_installable_channel(channel),
+            "install_block_reason": self._install_block_reason(channel),
+            "promotion_request_status": None,
         }
         return AppCatalogEntry.model_validate(payload)
 
@@ -420,6 +502,14 @@ class AppCatalogService:
         if not app_id:
             raise ValueError("Catalog app entry must include 'id'")
         repository_path = app.get("repository_path")
+        channel = self._extract_channel(app)
+        catalog_id = self._build_catalog_id(
+            {
+                "app_id": app_id,
+                "channel": channel,
+                "source": app.get("source") or {},
+            }
+        )
 
         compose_url = self._resolve_repository_file_url(
             value=app.get("compose_url"),
@@ -465,6 +555,7 @@ class AppCatalogService:
                 normalized_image_urls.append(resolved_url)
 
         return {
+            "catalog_id": catalog_id,
             "app_id": app_id,
             "title": app.get("name") or app.get("title") or app_id,
             "version": app.get("version"),
@@ -490,6 +581,12 @@ class AppCatalogService:
             "dependencies": normalized_dependencies,
             "source_updated_at": self._parse_source_updated_at(app.get("updated_at")),
             "raw_manifest": Json(app.get("raw_manifest") or app),
+            "channel": channel,
+            "channel_label": app.get("channel_label") or self._channel_label(channel),
+            "risk_level": app.get("risk_level"),
+            "support_tier": app.get("support_tier"),
+            "origin_channel": app.get("origin_channel") or channel,
+            "promotion_status": app.get("promotion_status"),
         }
 
     def _extract_category(
@@ -505,6 +602,53 @@ class AppCatalogService:
             return first if isinstance(first, str) and first else None
 
         return None
+
+    def _extract_channel(self, app: Dict[str, Any]) -> str:
+        channel = app.get("channel")
+        if isinstance(channel, str) and channel.strip():
+            return channel.strip().lower()
+        return "stable"
+
+    def _extract_source_id(self, app: Dict[str, Any]) -> str:
+        source = app.get("source")
+        if not isinstance(source, dict):
+            return "catalog"
+        source_id = source.get("id")
+        if isinstance(source_id, str) and source_id.strip():
+            return source_id.strip().lower()
+        return "catalog"
+
+    def _build_catalog_id(self, app: Dict[str, Any]) -> str:
+        app_id = str(app.get("app_id") or app.get("id") or "").strip()
+        channel = str(app.get("channel") or "stable").strip().lower()
+        source = app.get("source") or {}
+        if not isinstance(source, dict):
+            source = {}
+        source_id = str(source.get("id") or "catalog").strip().lower()
+        if not app_id:
+            raise ValueError(
+                "Catalog app entry must include an app_id to build catalog_id"
+            )
+        if channel == "incubator":
+            return f"{channel}:{source_id}:{app_id}"
+        return f"{channel}:{app_id}"
+
+    def _channel_label(self, channel: str) -> str:
+        labels = {
+            "stable": "Official",
+            "beta": "Beta",
+            "edge": "Edge",
+            "incubator": "Incubator",
+        }
+        return labels.get(channel, channel.title())
+
+    def _is_installable_channel(self, channel: str) -> bool:
+        return channel != "incubator"
+
+    def _install_block_reason(self, channel: str) -> Optional[str]:
+        if self._is_installable_channel(channel):
+            return None
+        return INCUBATOR_INSTALL_BLOCK_REASON
 
     def _resolve_install_file_url(
         self,
@@ -586,6 +730,9 @@ class AppCatalogService:
         if not raw_value:
             return None
 
+        if raw_value.startswith("apps/"):
+            return f"{CATALOG_RAW_BASE_URL}/{raw_value.strip('/')}"
+
         canonical_repo_path = self._canonical_repository_path(repository_path, app_id)
         if not canonical_repo_path:
             return raw_value
@@ -611,8 +758,16 @@ class AppCatalogService:
         ):
             rel_for_asset = rel_for_asset[len(app_id) + 1 :]
 
-        if not rel_for_asset.startswith("imgs/"):
-            rel_for_asset = f"imgs/{rel_for_asset.split('/')[-1]}"
+        if "/img/" in rel_for_asset:
+            rel_for_asset = rel_for_asset.split("/img/", 1)[1]
+            rel_for_asset = f"img/{rel_for_asset}"
+        elif "/imgs/" in rel_for_asset:
+            rel_for_asset = rel_for_asset.split("/imgs/", 1)[1]
+            rel_for_asset = f"imgs/{rel_for_asset}"
+        elif not (
+            rel_for_asset.startswith("img/") or rel_for_asset.startswith("imgs/")
+        ):
+            rel_for_asset = f"img/{rel_for_asset.split('/')[-1]}"
 
         normalized_path = f"{canonical_repo_path}/{rel_for_asset}"
         return f"{CATALOG_RAW_BASE_URL}/{normalized_path}"

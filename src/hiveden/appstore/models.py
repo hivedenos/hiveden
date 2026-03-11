@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 
 class AppCatalogEntry(BaseModel):
+    catalog_id: str
     app_id: str
     title: str
     version: Optional[str] = None
@@ -29,8 +30,17 @@ class AppCatalogEntry(BaseModel):
     dependencies: List[str] = Field(default_factory=list)
     source_updated_at: Optional[str] = None
     raw_manifest: Dict[str, Any] = Field(default_factory=dict)
+    channel: str = "stable"
+    channel_label: Optional[str] = None
+    risk_level: Optional[str] = None
+    support_tier: Optional[str] = None
+    origin_channel: Optional[str] = None
+    promotion_status: Optional[str] = None
     installed: bool = False
     install_status: Optional[str] = None
+    installable: bool = True
+    install_block_reason: Optional[str] = None
+    promotion_request_status: Optional[str] = None
 
 
 class AppInstallState(BaseModel):
@@ -43,3 +53,7 @@ class AppInstallState(BaseModel):
 class CatalogSyncResult(BaseModel):
     total: int
     upserted: int
+
+
+class AppCacheClearResult(BaseModel):
+    cleared_entries: int

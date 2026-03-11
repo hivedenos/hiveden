@@ -1,11 +1,14 @@
 import asyncio
 import traceback
 from typing import Optional
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.logger import logger
 
 from hiveden.api.dtos import (
+    AppCacheClearRequest,
+    AppCacheClearResponse,
     AppAdoptRequest,
     AppAdoptResponse,
     AppDetail,
@@ -13,6 +16,9 @@ from hiveden.api.dtos import (
     AppInstallRequest,
     AppInstallResponse,
     AppListResponse,
+    AppPromotionRequestCreate,
+    AppPromotionRequestInfo,
+    AppPromotionRequestResponse,
     AppSummary,
     AppSyncResponse,
     AppUninstallRequest,
@@ -24,12 +30,38 @@ from hiveden.appstore.install_service import AppInstallService
 from hiveden.appstore.uninstall_service import AppUninstallService
 from hiveden.config.settings import config
 from hiveden.jobs.manager import JobManager
+from hiveden.services.logs import LogService
 
 router = APIRouter(prefix="/app-store", tags=["App Store"])
+APPSTORE_LOG_MODULE = "appstore"
+
+
+def _appstore_log_info(action: str, message: str, metadata: Optional[dict] = None):
+    LogService().info(
+        actor="system",
+        action=action,
+        message=message,
+        metadata=metadata or {},
+        module=APPSTORE_LOG_MODULE,
+    )
+
+
+def _appstore_log_error(
+    action: str, message: str, exc: Exception, metadata: Optional[dict] = None
+):
+    LogService().error(
+        actor="system",
+        action=action,
+        message=message,
+        error_details=str(exc),
+        metadata=metadata or {},
+        module=APPSTORE_LOG_MODULE,
+    )
 
 
 def _to_summary(entry) -> AppSummary:
     payload = {
+        "catalog_id": entry.catalog_id,
         "app_id": entry.app_id,
         "title": entry.title,
         "version": entry.version,
@@ -43,8 +75,17 @@ def _to_summary(entry) -> AppSummary:
         "dependencies": getattr(entry, "dependencies", []) or [],
         "repository_path": getattr(entry, "repository_path", None),
         "developer": entry.developer,
+        "channel": getattr(entry, "channel", "stable"),
+        "channel_label": getattr(entry, "channel_label", None),
+        "risk_level": getattr(entry, "risk_level", None),
+        "support_tier": getattr(entry, "support_tier", None),
+        "origin_channel": getattr(entry, "origin_channel", None),
+        "promotion_status": getattr(entry, "promotion_status", None),
         "installed": entry.installed,
         "install_status": entry.install_status,
+        "installable": getattr(entry, "installable", True),
+        "install_block_reason": getattr(entry, "install_block_reason", None),
+        "promotion_request_status": getattr(entry, "promotion_request_status", None),
     }
     return AppSummary.model_validate(payload)
 
@@ -81,6 +122,75 @@ def _to_adopted_container(container) -> dict:
     }
 
 
+def _build_promotion_request_info(app, payload: AppPromotionRequestCreate):
+    target_channel = (payload.target_channel or "edge").strip().lower()
+    if target_channel not in {"stable", "beta", "edge"}:
+        raise HTTPException(
+            status_code=400,
+            detail="target_channel must be one of: stable, beta, edge",
+        )
+
+    repo_url = "https://github.com/hivedenos/hivedenos-apps"
+    source = getattr(app, "source", {}) or {}
+    source_id = source.get("id") if isinstance(source, dict) else None
+    suggested_title = f"Promote app: {app.app_id} from incubator to {target_channel}"
+    requested_by = payload.requested_by or ""
+    suggested_body = "\n".join(
+        [
+            "## Promotion request",
+            f"- App ID: `{app.app_id}`",
+            f"- Catalog ID: `{app.catalog_id}`",
+            f"- Current channel: `{app.channel}`",
+            f"- Requested channel: `{target_channel}`",
+            f"- Repository path: `{getattr(app, 'repository_path', None) or 'unknown'}`",
+            f"- Source ID: `{source_id or 'unknown'}`",
+            f"- Developer: `{getattr(app, 'developer', None) or 'unknown'}`",
+            f"- Requested by: `{requested_by or 'anonymous'}`",
+            "",
+            "### Reason",
+            payload.reason or "Please review this incubator app for promotion.",
+            "",
+            "### Notes",
+            "Incubator apps are discovery-only in Hiveden and must not be installed directly.",
+            "Promotion requires a GitHub issue or, preferably, a pull request against hivedenos-apps.",
+        ]
+    )
+    issue_query = urlencode({"title": suggested_title, "body": suggested_body})
+    return AppPromotionRequestInfo.model_validate(
+        {
+            "catalog_id": app.catalog_id,
+            "app_id": app.app_id,
+            "channel": app.channel,
+            "target_channel": target_channel,
+            "github_repo_url": repo_url,
+            "github_issue_url": f"{repo_url}/issues/new?{issue_query}",
+            "github_pulls_url": f"{repo_url}/pulls",
+            "suggested_title": suggested_title,
+            "suggested_body": suggested_body,
+            "reason": payload.reason,
+            "requested_by": payload.requested_by,
+        }
+    )
+
+
+def _catalog_apps_from_payload(payload: dict) -> list[dict]:
+    apps_by_channel = payload.get("apps_by_channel")
+    if not isinstance(apps_by_channel, dict):
+        return payload.get("apps", []) or []
+
+    catalog_apps = []
+    for channel, entries in apps_by_channel.items():
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            normalized_entry = dict(entry)
+            normalized_entry.setdefault("channel", channel)
+            catalog_apps.append(normalized_entry)
+    return catalog_apps
+
+
 @router.post("/sync", response_model=AppSyncResponse, status_code=202)
 async def sync_catalog():
     if not config.appstore_index_url:
@@ -89,20 +199,40 @@ async def sync_catalog():
             detail="HIVEDEN_APPSTORE_INDEX_URL is not configured",
         )
 
+    _appstore_log_info(
+        action="sync_catalog",
+        message="App store catalog sync requested",
+        metadata={"index_url": config.appstore_index_url},
+    )
+
     job_manager = JobManager()
     job_id = job_manager.create_external_job("appstore.sync")
 
     async def worker(current_job_id: str, manager: JobManager):
-        await manager.log(current_job_id, "Fetching app catalog index")
-        client = CatalogClient(timeout_seconds=config.appstore_http_timeout_seconds)
-        payload = client.fetch_catalog(config.appstore_index_url)
-        apps = payload.get("apps", [])
-        service = AppCatalogService()
-        result = service.upsert_catalog(apps)
-        await manager.log(
-            current_job_id,
-            f"Catalog sync completed: {result.upserted}/{result.total} entries updated",
-        )
+        try:
+            await manager.log(current_job_id, "Fetching app catalog index")
+            client = CatalogClient(timeout_seconds=config.appstore_http_timeout_seconds)
+            payload = client.fetch_catalog(config.appstore_index_url)
+            apps = _catalog_apps_from_payload(payload)
+            service = AppCatalogService()
+            result = service.upsert_catalog(apps)
+            _appstore_log_info(
+                action="sync_catalog",
+                message="App store catalog sync completed",
+                metadata={"total": result.total, "upserted": result.upserted},
+            )
+            await manager.log(
+                current_job_id,
+                f"Catalog sync completed: {result.upserted}/{result.total} entries updated",
+            )
+        except Exception as exc:
+            _appstore_log_error(
+                action="sync_catalog",
+                message="App store catalog sync failed",
+                exc=exc,
+                metadata={"index_url": config.appstore_index_url},
+            )
+            raise
 
     asyncio.create_task(job_manager.run_external_job(job_id, worker))
     return AppSyncResponse.model_validate(
@@ -114,17 +244,41 @@ async def sync_catalog():
 def list_apps(
     q: Optional[str] = Query(None, description="Search query"),
     category: Optional[str] = Query(None, description="Category filter"),
+    channel: Optional[str] = Query(None, description="Channel filter"),
     installed: Optional[bool] = Query(None, description="Filter by install state"),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):
     try:
+        _appstore_log_info(
+            action="refresh_appstore",
+            message="App store catalog refreshed",
+            metadata={
+                "query": q,
+                "category": category,
+                "channel": channel,
+                "installed": installed,
+                "limit": limit,
+                "offset": offset,
+            },
+        )
         service = AppCatalogService()
         entries = service.list_apps(
-            q=q, category=category, installed=installed, limit=limit, offset=offset
+            q=q,
+            category=category,
+            channel=channel,
+            installed=installed,
+            limit=limit,
+            offset=offset,
         )
         return AppListResponse(data=[_to_summary(entry) for entry in entries])
     except Exception as exc:
+        _appstore_log_error(
+            action="refresh_appstore",
+            message="App store refresh failed",
+            exc=exc,
+            metadata={"query": q, "category": category, "channel": channel},
+        )
         logger.error(
             "Error listing app store entries: %s\n%s", exc, traceback.format_exc()
         )
@@ -163,10 +317,18 @@ async def install_app(app_id: str, payload: AppInstallRequest):
     app = service.get_app(app_id)
     if not app:
         raise HTTPException(status_code=404, detail=f"App '{app_id}' not found")
+    if not app.installable:
+        raise HTTPException(status_code=409, detail=app.install_block_reason)
     if app.install_status in {"installing", "uninstalling"}:
         raise HTTPException(
             status_code=409, detail=f"App '{app_id}' is currently {app.install_status}"
         )
+
+    _appstore_log_info(
+        action="install_app",
+        message=f"App install requested for {app.app_id}",
+        metadata={"catalog_id": app.catalog_id, "app_id": app.app_id},
+    )
 
     job_manager = JobManager()
     job_id = job_manager.create_external_job(f"appstore.install:{app_id}")
@@ -198,10 +360,18 @@ async def uninstall_app(app_id: str, payload: AppUninstallRequest):
     app = service.get_app(app_id)
     if not app:
         raise HTTPException(status_code=404, detail=f"App '{app_id}' not found")
+    if not app.installable:
+        raise HTTPException(status_code=409, detail=app.install_block_reason)
     if app.install_status in {"installing", "uninstalling"}:
         raise HTTPException(
             status_code=409, detail=f"App '{app_id}' is currently {app.install_status}"
         )
+
+    _appstore_log_info(
+        action="uninstall_app",
+        message=f"App uninstall requested for {app.app_id}",
+        metadata={"catalog_id": app.catalog_id, "app_id": app.app_id},
+    )
 
     job_manager = JobManager()
     job_id = job_manager.create_external_job(f"appstore.uninstall:{app_id}")
@@ -232,6 +402,8 @@ def adopt_existing_app_containers(app_id: str, payload: AppAdoptRequest):
     app = service.get_app(app_id)
     if not app:
         raise HTTPException(status_code=404, detail=f"App '{app_id}' not found")
+    if not app.installable:
+        raise HTTPException(status_code=409, detail=app.install_block_reason)
     if app.install_status in {"installing", "uninstalling"}:
         raise HTTPException(
             status_code=409, detail=f"App '{app_id}' is currently {app.install_status}"
@@ -251,6 +423,15 @@ def adopt_existing_app_containers(app_id: str, payload: AppAdoptRequest):
             force=payload.force,
         )
         refreshed = service.get_app(app_id) or app
+        _appstore_log_info(
+            action="link_app",
+            message=f"App linked to existing containers for {app.app_id}",
+            metadata={
+                "catalog_id": app.catalog_id,
+                "app_id": app.app_id,
+                "containers": payload.container_names_or_ids,
+            },
+        )
         return AppAdoptResponse.model_validate(
             {
                 "message": f"App {app_id} linked to existing container(s)",
@@ -265,8 +446,20 @@ def adopt_existing_app_containers(app_id: str, payload: AppAdoptRequest):
             }
         )
     except ValueError as exc:
+        _appstore_log_error(
+            action="link_app",
+            message=f"App link failed for {app_id}",
+            exc=exc,
+            metadata={"app_id": app_id, "containers": payload.container_names_or_ids},
+        )
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
+        _appstore_log_error(
+            action="link_app",
+            message=f"App link failed for {app_id}",
+            exc=exc,
+            metadata={"app_id": app_id, "containers": payload.container_names_or_ids},
+        )
         logger.error(
             "Error linking existing containers for app %s: %s\n%s",
             app_id,
@@ -274,3 +467,88 @@ def adopt_existing_app_containers(app_id: str, payload: AppAdoptRequest):
             traceback.format_exc(),
         )
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post(
+    "/apps/{app_id}/promotion-request", response_model=AppPromotionRequestResponse
+)
+def request_app_promotion(app_id: str, payload: AppPromotionRequestCreate):
+    service = AppCatalogService()
+    app = service.get_app(app_id)
+    if not app:
+        raise HTTPException(status_code=404, detail=f"App '{app_id}' not found")
+    if app.channel != "incubator":
+        raise HTTPException(
+            status_code=400,
+            detail="Promotion requests are only supported for incubator apps",
+        )
+
+    request_info = _build_promotion_request_info(app, payload)
+    return AppPromotionRequestResponse.model_validate(
+        {
+            "message": "Use GitHub to open an issue or submit a pull request for promotion",
+            "data": request_info,
+        }
+    )
+
+
+@router.post("/cache/clear", response_model=AppCacheClearResponse)
+async def clear_catalog_cache(payload: AppCacheClearRequest):
+    service = AppCatalogService()
+    result = service.clear_catalog_cache()
+    _appstore_log_info(
+        action="clear_cache",
+        message="App store cache cleared",
+        metadata={
+            "cleared_entries": result.cleared_entries,
+            "sync_after_clear": payload.sync_after_clear,
+        },
+    )
+
+    response_payload = {
+        "message": "App store cache cleared",
+        "data": {"cleared_entries": result.cleared_entries, "job_id": None},
+    }
+
+    if not payload.sync_after_clear:
+        return AppCacheClearResponse.model_validate(response_payload)
+
+    if not config.appstore_index_url:
+        raise HTTPException(
+            status_code=400,
+            detail="HIVEDEN_APPSTORE_INDEX_URL is not configured",
+        )
+
+    job_manager = JobManager()
+    job_id = job_manager.create_external_job("appstore.sync")
+
+    async def worker(current_job_id: str, manager: JobManager):
+        try:
+            await manager.log(current_job_id, "Fetching app catalog index")
+            client = CatalogClient(timeout_seconds=config.appstore_http_timeout_seconds)
+            sync_payload = client.fetch_catalog(config.appstore_index_url)
+            apps = _catalog_apps_from_payload(sync_payload)
+            sync_result = service.upsert_catalog(apps)
+            _appstore_log_info(
+                action="sync_catalog",
+                message="App store catalog sync completed after cache clear",
+                metadata={"total": sync_result.total, "upserted": sync_result.upserted},
+            )
+            await manager.log(
+                current_job_id,
+                "Catalog sync completed: "
+                f"{sync_result.upserted}/{sync_result.total} entries updated",
+            )
+        except Exception as exc:
+            _appstore_log_error(
+                action="sync_catalog",
+                message="App store catalog sync after cache clear failed",
+                exc=exc,
+                metadata={"index_url": config.appstore_index_url},
+            )
+            raise
+
+    asyncio.create_task(job_manager.run_external_job(job_id, worker))
+    response_payload["message"] = "App store cache cleared and sync started"
+    response_payload["data"]["job_id"] = job_id
+    return AppCacheClearResponse.model_validate(response_payload)

@@ -315,6 +315,7 @@ class ImageLayerListResponse(BaseResponse):
 
 
 class AppSummary(BaseModel):
+    catalog_id: str
     app_id: str
     title: str
     version: Optional[str] = None
@@ -328,8 +329,17 @@ class AppSummary(BaseModel):
     dependencies: List[str] = Field(default_factory=list)
     repository_path: Optional[str] = None
     developer: Optional[str] = None
+    channel: str = "stable"
+    channel_label: Optional[str] = None
+    risk_level: Optional[str] = None
+    support_tier: Optional[str] = None
+    origin_channel: Optional[str] = None
+    promotion_status: Optional[str] = None
     installed: bool = False
     install_status: Optional[str] = None
+    installable: bool = True
+    install_block_reason: Optional[str] = None
+    promotion_request_status: Optional[str] = None
 
 
 class AppDetail(AppSummary):
@@ -364,6 +374,35 @@ class AppAdoptRequest(BaseModel):
     force: bool = False
 
 
+class AppPromotionRequestCreate(BaseModel):
+    reason: Optional[str] = None
+    requested_by: Optional[str] = None
+    target_channel: str = "edge"
+
+
+class AppPromotionRequestInfo(BaseModel):
+    catalog_id: str
+    app_id: str
+    channel: str
+    target_channel: str
+    github_repo_url: str
+    github_issue_url: str
+    github_pulls_url: str
+    suggested_title: str
+    suggested_body: str
+    reason: Optional[str] = None
+    requested_by: Optional[str] = None
+
+
+class AppCacheClearRequest(BaseModel):
+    sync_after_clear: bool = False
+
+
+class AppCacheClearInfo(BaseModel):
+    cleared_entries: int
+    job_id: Optional[str] = None
+
+
 class AppAdoptedContainer(BaseModel):
     container_id: str
     container_name: str
@@ -396,6 +435,14 @@ class AppDetailResponse(BaseResponse):
 
 class AppAdoptResponse(BaseResponse):
     data: AppAdoptResult
+
+
+class AppPromotionRequestResponse(BaseResponse):
+    data: AppPromotionRequestInfo
+
+
+class AppCacheClearResponse(BaseResponse):
+    data: AppCacheClearInfo
 
 
 class DataResponse(BaseResponse):

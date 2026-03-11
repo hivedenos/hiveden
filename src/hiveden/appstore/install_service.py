@@ -28,19 +28,27 @@ class AppInstallService:
         app = self.catalog.get_app(app_id)
         if not app:
             raise ValueError(f"App '{app_id}' was not found in catalog")
+        if not app.installable:
+            raise ValueError(
+                app.install_block_reason or f"App '{app.app_id}' cannot be installed"
+            )
         if app.install_status in {"installing", "uninstalling"}:
-            raise ValueError(f"App '{app_id}' is currently {app.install_status}")
+            raise ValueError(f"App '{app.app_id}' is currently {app.install_status}")
 
-        self.catalog.set_installation_status(app_id, "installing", installed_version=app.version)
-        await job_manager.log(job_id, f"Preparing installation for {app_id}")
+        self.catalog.set_installation_status(
+            app.catalog_id, "installing", installed_version=app.version
+        )
+        await job_manager.log(job_id, f"Preparing installation for {app.app_id}")
 
         try:
-            await self._validate_dependencies(job_id, job_manager, app, auto_install_prereqs)
+            await self._validate_dependencies(
+                job_id, job_manager, app, auto_install_prereqs
+            )
             compose_content = self._download_text(app.compose_url)
             self._verify_compose_checksum(compose_content, app.compose_sha256)
             compose_data = parse_compose_yaml(compose_content)
             translated = translate_compose_services(
-                app_id=app_id,
+                app_id=app.app_id,
                 compose_data=compose_data,
                 env_overrides=env_overrides or {},
             )
@@ -65,28 +73,28 @@ class AppInstallService:
                     privileged=service["privileged"],
                 )
                 self.catalog.add_resource(
-                    app_id=app_id,
+                    app_id=app.catalog_id,
                     resource_type="container",
-                    resource_name=container.name,
+                    resource_name=container.name or service["name"],
                     metadata={"image": service["image"]},
                 )
                 for app_dir in service["app_directories"]:
                     self.catalog.add_resource(
-                        app_id=app_id,
+                        app_id=app.catalog_id,
                         resource_type="directory",
                         resource_name=app_dir,
                         metadata={"service": service["name"]},
                     )
 
             self.catalog.set_installation_status(
-                app_id,
+                app.catalog_id,
                 "installed",
                 installed_version=app.version,
             )
-            await job_manager.log(job_id, f"App {app_id} installed successfully")
+            await job_manager.log(job_id, f"App {app.app_id} installed successfully")
         except Exception as exc:
             self.catalog.set_installation_status(
-                app_id,
+                app.catalog_id,
                 "failed",
                 installed_version=app.version,
                 last_error=str(exc),
@@ -122,7 +130,9 @@ class AppInstallService:
                 + ". Retry with auto_install_prereqs=true."
             )
 
-        await job_manager.log(job_id, f"Installing system packages: {', '.join(missing)}")
+        await job_manager.log(
+            job_id, f"Installing system packages: {', '.join(missing)}"
+        )
         for pkg in missing:
             pm.install(pkg)
             await job_manager.log(job_id, f"Installed package: {pkg}")
