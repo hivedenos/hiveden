@@ -14,7 +14,21 @@ BuildRequires:  python3-devel
 BuildRequires:  python3-pip
 BuildRequires:  python3-build
 Requires:       systemd
+Requires:       docker
+Requires:       smartmontools
+Requires:       lxc
+Requires:       python3-click
+Requires:       python3-fastapi
+Requires:       python3-uvicorn
+Requires:       python3-docker
+Requires:       python3-pyyaml
+Requires:       python3-psutil
+Requires:       python3-lxc
+Requires:       python3-paramiko
+Requires:       python3-websockets
 Requires:       python3-psycopg2
+Requires:       python3-APScheduler
+Requires:       python3-python-multipart
 Requires:       lshw
 Requires:       samba
 Requires:       cifs-utils
@@ -50,8 +64,8 @@ mkdir -p %{buildroot}/opt/hiveden
 
 %post
 %systemd_post hiveden.service
-# Install all Python dependencies via pip
-pip3 install --no-warn-script-location click fastapi uvicorn docker PyYAML psutil lxc paramiko websockets pihole6api yoyo-migrations python-multipart APScheduler 2>/dev/null || true
+# Install PyPI-only dependencies that are not provided by Fedora packages.
+pip3 install --no-warn-script-location pihole6api yoyo-migrations 2>/dev/null || true
 
 %preun
 %systemd_preun hiveden.service

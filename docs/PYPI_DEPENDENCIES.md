@@ -1,22 +1,27 @@
-# PyPI-Only Dependencies Strategy
+# Python Dependency Strategy
 
 ## Problem
 
-Some Python packages required by Hiveden are **only available on PyPI** (Python Package Index) and are not packaged for distribution repositories:
+Hiveden supports two installation paths:
 
-- **`pihole6api`** - Pi-hole 6 API client
-- **`yoyo-migrations`** - Database migration tool
+1. **Direct Python installs** via `pip`
+2. **System packages** via `apt`, `dnf`, or `pacman`
 
-When these are listed as required dependencies in `pyproject.toml`, `pkg_resources` throws a `DistributionNotFound` error during package installation because the system package manager can't find them.
+Those paths use different dependency sources:
+
+- **Core runtime Python deps** should come from the Python metadata for `pip`
+- **System packages** should map those deps to distro package names wherever possible
+- **PyPI-only deps** should remain in `pip` post-install hooks only when the distro does not provide them
+
+The old packaging mixed both approaches and reinstalled distro-managed dependencies with `pip` during package installation.
 
 ## Solution
 
-We use a **pip-based installation** approach:
+We now split dependency ownership clearly:
 
-1. **List all dependencies** in `pyproject.toml` (both required and optional extras)
-2. **Install via pip during post-install** - System package post-install scripts use pip to install all Python dependencies
-
-This ensures reliable dependency resolution and works consistently across all distributions.
+1. **`pyproject.toml` declares the pip/runtime dependency set** for direct Python installs
+2. **Distro packaging maps those dependencies to system package names** where available
+3. **Post-install pip hooks are reserved for PyPI-only gaps** on a given distro
 
 ## Implementation
 
@@ -32,16 +37,18 @@ dependencies = [
     "PyYAML",
     "psutil",
     "lxc",
-    "psycopg2",
     "paramiko",
     "websockets",
+    "psycopg2",
+    "APScheduler",
+    "python-multipart",
+    "yoyo-migrations",
 ]
 
 [project.optional-dependencies]
-# PyPI-only packages
-extras = [
+# Optional integrations
+pihole = [
     "pihole6api",
-    "yoyo-migrations",
 ]
 ```
 
@@ -49,8 +56,8 @@ extras = [
 
 ```bash
 post_install() {
-    # Install all Python dependencies via pip
-    pip install --no-warn-script-location click fastapi uvicorn docker PyYAML psutil lxc paramiko websockets pihole6api yoyo-migrations 2>/dev/null || true
+    # Install only packages not covered by repo packages
+    pip install --no-warn-script-location APScheduler pihole6api yoyo-migrations 2>/dev/null || true
 }
 
 post_upgrade() {
@@ -64,10 +71,10 @@ post_upgrade() {
 #!/bin/bash
 
 mkdir -p /opt/hiveden
-chmod 644 /opt/hiveden
+chown -R hiveden:hiveden /opt/hiveden
+chmod 750 /opt/hiveden
 
-# Install all Python dependencies via pip
-pip3 install --no-warn-script-location click fastapi uvicorn docker PyYAML psutil lxc paramiko websockets pihole6api yoyo-migrations 2>/dev/null || true
+# Python dependencies are provided by Debian package dependencies.
 ```
 
 ### Fedora/RHEL (spec file)
@@ -75,35 +82,31 @@ pip3 install --no-warn-script-location click fastapi uvicorn docker PyYAML psuti
 ```spec
 %post
 %systemd_post hiveden.service
-# Install all Python dependencies via pip
-pip3 install --no-warn-script-location click fastapi uvicorn docker PyYAML psutil lxc paramiko websockets pihole6api yoyo-migrations 2>/dev/null || true
+# Install only PyPI-only gaps for Fedora.
+pip3 install --no-warn-script-location pihole6api yoyo-migrations 2>/dev/null || true
 ```
 
 ## Why This Works
 
-1. **Build time**: Package builds with minimal dependencies (just system package manager basics)
-2. **Install time**: Post-install scripts fetch and install all Python dependencies from PyPI
-3. **Runtime**: All dependencies available when application runs
-4. **Upgrades**: Post-upgrade hooks ensure dependencies stay current
+1. **Pip installs are accurate**: Python metadata reflects the real runtime requirements
+2. **System packages stay clean**: distro-managed dependencies are not reinstalled with `pip`
+3. **PyPI-only gaps stay explicit**: post-install hooks only cover packages missing from distro repos
+4. **Maintenance is clearer**: package metadata and distro packaging each own their side of the split
 
 ## Flags Used
 
 - `--no-warn-script-location`: Suppress warnings about script locations
 - `2>/dev/null || true`: Suppress errors and don't fail package installation if pip has issues
 
-## Benefits
+## Current Split
 
-✅ **Consistent across distros** - Same dependency list everywhere  
-✅ **Reliable resolution** - pip handles dependency trees correctly  
-✅ **Always up-to-date** - Gets latest compatible versions from PyPI  
-✅ **Handles PyPI-only packages** - Works for packages not in system repos  
-✅ **Simple maintenance** - Single source of truth (pyproject.toml)
+- **Declared in `pyproject.toml`**: core runtime Python packages used by direct `pip` installs
+- **Optional pip extra**: `pihole6api` via the `pihole` extra
+- **Installed by Debian packages**: all current runtime deps via `Depends`
+- **Installed by Fedora post-install**: `pihole6api`, `yoyo-migrations`
+- **Installed by Arch post-install**: `APScheduler`, `pihole6api`, `yoyo-migrations`
 
-## Alternatives Considered
+## Notes
 
-1. **Bundling wheels** - Would increase package size significantly
-2. **Lazy imports** - Requires code changes and makes features harder to discover
-3. **Vendoring** - Hard to maintain and update
-4. **System packages** - Not available for these libraries
-
-The current approach is the cleanest balance between compatibility and functionality.
+- Distro availability changes over time, so Fedora and Arch may eventually move more packages out of the pip fallback path.
+- If a dependency becomes optional in the application code, it should move to a feature-specific extra in `pyproject.toml`.

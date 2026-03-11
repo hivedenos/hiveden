@@ -5,7 +5,10 @@ docker
 PyYAML
 psutil
 lxc
-pihole6api
-yoyo-migrations
-psycopg2-binary
+paramiko
+websockets
+psycopg2
 APScheduler
+python-multipart
+yoyo-migrations
+pihole6api

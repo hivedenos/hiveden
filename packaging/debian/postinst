@@ -12,11 +12,9 @@ mkdir -p /opt/hiveden
 chown -R hiveden:hiveden /opt/hiveden
 chmod 750 /opt/hiveden
 
-# Install all Python dependencies via pip
-# Use --break-system-packages as we are intentionally installing into the system environment for this appliance
+# Python dependencies are provided through Debian package dependencies,
+# except for PyPI-only integrations.
 if command -v pip3 >/dev/null 2>&1; then
-    pip3 install --break-system-packages --no-warn-script-location click fastapi uvicorn docker PyYAML psutil lxc paramiko websockets pihole6api yoyo-migrations python-multipart psycopg2 APScheduler || \
-    pip3 install --no-warn-script-location click fastapi uvicorn docker PyYAML psutil lxc paramiko websockets pihole6api yoyo-migrations python-multipart psycopg2 APScheduler || true
-else
-    echo "pip3 not found, skipping Python dependency installation via pip"
+    pip3 install --break-system-packages --no-warn-script-location pihole6api >/dev/null 2>&1 || \
+    pip3 install --no-warn-script-location pihole6api >/dev/null 2>&1 || true
 fi

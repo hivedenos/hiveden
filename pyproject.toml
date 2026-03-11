@@ -11,19 +11,31 @@ authors = [
 description = "A CLI tool and REST API for managing your personal server."
 readme = "README.md"
 requires-python = ">=3.7"
+license = { text = "MIT" }
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
 dependencies = [
+    "click",
+    "fastapi",
+    "uvicorn",
+    "docker",
+    "PyYAML",
+    "psutil",
+    "lxc",
+    "paramiko",
+    "websockets",
+    "psycopg2",
+    "APScheduler",
+    "python-multipart",
+    "yoyo-migrations",
 ]
 
 [project.optional-dependencies]
-# These are PyPI-only packages that will be auto-installed during system package installation
-extras = [
+# Optional integrations that are installed from PyPI for pip-based setups.
+pihole = [
     "pihole6api",
-    "yoyo-migrations",
 ]
 
 [tool.setuptools.dynamic]
