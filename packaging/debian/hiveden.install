@@ -1,2 +1,2 @@
 packaging/hiveden.service lib/systemd/system/
-packaging/hiveden.default.yaml etc/hiveden/config.yaml
+packaging/hiveden.default.yaml etc/hiveden/
