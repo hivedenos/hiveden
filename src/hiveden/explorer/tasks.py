@@ -1,27 +1,55 @@
+import logging
 import os
-import shutil
 import re
+import shutil
 import traceback
 from datetime import datetime
-from typing import List, Optional
+from typing import List
 
 from hiveden.explorer.manager import ExplorerManager
+from hiveden.explorer.models import ExplorerOperation, OperationStatus
 from hiveden.explorer.operations import ExplorerService
-from hiveden.explorer.models import OperationStatus, ExplorerOperation, FileType, FileEntry
-
-import logging
 
 logger = logging.getLogger(__name__)
 
-def perform_search(op_id: str, path: str, pattern: str, use_regex: bool, case_sensitive: bool, type_filter: str, show_hidden: bool):
+
+def _is_cancelled(manager: ExplorerManager, op_id: str) -> bool:
+    current = manager.get_operation(op_id)
+    return bool(current and current.status == OperationStatus.CANCELLED)
+
+
+def _mark_cancelled(
+    op: ExplorerOperation,
+    manager: ExplorerManager,
+    result=None,
+):
+    op.status = OperationStatus.CANCELLED
+    op.error_message = op.error_message or "Operation cancelled"
+    op.completed_at = datetime.utcnow()
+    if result is not None:
+        op.result = result
+    manager.update_operation(op)
+
+
+def perform_search(
+    op_id: str,
+    path: str,
+    pattern: str,
+    use_regex: bool,
+    case_sensitive: bool,
+    type_filter: str,
+    show_hidden: bool,
+):
     manager = ExplorerManager()
     service = ExplorerService()
-    
-    logger.info(f"Starting search operation {op_id} in {path} with pattern {pattern}")
+
+    logger.info(
+        "Starting search operation %s in %s with pattern %s", op_id, path, pattern
+    )
 
     op = manager.get_operation(op_id)
     if not op:
-        logger.error(f"Operation {op_id} not found")
+        logger.error("Operation %s not found", op_id)
         return
 
     op.status = OperationStatus.IN_PROGRESS
@@ -34,75 +62,114 @@ def perform_search(op_id: str, path: str, pattern: str, use_regex: bool, case_se
     try:
         flags = 0 if case_sensitive else re.IGNORECASE
         if not use_regex:
-            # Convert glob to regex: escape everything, then revert * and ? to regex equivalents
-            pattern = re.escape(pattern).replace(r'\*', '.*').replace(r'\?', '.')
-        
-        logger.info(f"Compiled regex: {pattern}")
+            pattern = re.escape(pattern).replace(r"\*", ".*").replace(r"\?", ".")
+
         regex = re.compile(pattern, flags)
-        
+
         for root, dirs, files in os.walk(path):
-            # Filtering hidden
+            if _is_cancelled(manager, op_id):
+                _mark_cancelled(
+                    op,
+                    manager,
+                    {
+                        "matches": matches,
+                        "total_matches": len(matches),
+                        "search_time_seconds": (
+                            datetime.now() - start_time
+                        ).total_seconds(),
+                    },
+                )
+                return
+
             if not show_hidden:
-                dirs[:] = [d for d in dirs if not d.startswith('.')]
-                files = [f for f in files if not f.startswith('.')]
-            
-            # Scan directories
-            if type_filter in ['all', 'directory']:
-                for d in dirs:
+                dirs[:] = [d for d in dirs if not d.startswith(".")]
+                files = [f for f in files if not f.startswith(".")]
+
+            if type_filter in ["all", "directory"]:
+                for directory in dirs:
+                    if _is_cancelled(manager, op_id):
+                        _mark_cancelled(
+                            op,
+                            manager,
+                            {
+                                "matches": matches,
+                                "total_matches": len(matches),
+                                "search_time_seconds": (
+                                    datetime.now() - start_time
+                                ).total_seconds(),
+                            },
+                        )
+                        return
                     total_scanned += 1
-                    if regex.search(d):
+                    if regex.search(directory):
                         try:
-                            full_path = os.path.join(root, d)
+                            full_path = os.path.join(root, directory)
                             matches.append(service.get_file_entry(full_path).dict())
-                        except Exception as e:
-                            logger.warning(f"Error getting file entry for {d}: {e}")
-            
-            # Scan files
-            if type_filter in ['all', 'file']:
-                for f in files:
+                        except Exception as exc:
+                            logger.warning(
+                                "Error getting file entry for %s: %s", directory, exc
+                            )
+
+            if type_filter in ["all", "file"]:
+                for filename in files:
+                    if _is_cancelled(manager, op_id):
+                        _mark_cancelled(
+                            op,
+                            manager,
+                            {
+                                "matches": matches,
+                                "total_matches": len(matches),
+                                "search_time_seconds": (
+                                    datetime.now() - start_time
+                                ).total_seconds(),
+                            },
+                        )
+                        return
                     total_scanned += 1
-                    if regex.search(f):
+                    if regex.search(filename):
                         try:
-                            full_path = os.path.join(root, f)
+                            full_path = os.path.join(root, filename)
                             matches.append(service.get_file_entry(full_path).dict())
-                        except Exception as e:
-                            logger.warning(f"Error getting file entry for {f}: {e}")
-            
-            # Update progress periodically (every 100 items or so)
+                        except Exception as exc:
+                            logger.warning(
+                                "Error getting file entry for %s: %s", filename, exc
+                            )
+
             if total_scanned % 100 == 0:
                 op.processed_items = total_scanned
                 manager.update_operation(op)
 
         search_time = (datetime.now() - start_time).total_seconds()
-        
         op.result = {
             "matches": matches,
             "total_matches": len(matches),
-            "search_time_seconds": search_time
+            "search_time_seconds": search_time,
         }
         op.status = OperationStatus.COMPLETED
         op.processed_items = total_scanned
         op.completed_at = datetime.utcnow()
         manager.update_operation(op)
-        logger.info(f"Search operation {op_id} completed. Matches: {len(matches)}")
-
-    except Exception as e:
-        logger.error(f"Search operation {op_id} failed: {e}", exc_info=True)
+    except Exception as exc:
+        logger.error("Search operation %s failed: %s", op_id, exc, exc_info=True)
         op.status = OperationStatus.FAILED
-        op.error_message = str(e)
+        op.error_message = str(exc)
         op.completed_at = datetime.utcnow()
         manager.update_operation(op)
 
-def perform_paste(op_id: str, source_paths: List[str], dest_path: str, conflict_resolution: str, rename_pattern: str):
+
+def perform_paste(
+    op_id: str,
+    source_paths: List[str],
+    dest_path: str,
+    conflict_resolution: str,
+    rename_pattern: str,
+):
     manager = ExplorerManager()
-    service = ExplorerService()
-    
     op = manager.get_operation(op_id)
     if not op:
         return
 
     op.status = OperationStatus.IN_PROGRESS
-    # Estimate total items (shallow count at least)
     op.total_items = len(source_paths)
     manager.update_operation(op)
 
@@ -110,9 +177,17 @@ def perform_paste(op_id: str, source_paths: List[str], dest_path: str, conflict_
     errors = []
 
     try:
-        is_move = op.operation_type == "move" # Assuming logic sets this type
-        
+        is_move = op.operation_type == "move"
+
         for src in source_paths:
+            if _is_cancelled(manager, op_id):
+                _mark_cancelled(
+                    op,
+                    manager,
+                    {"processed_items": processed, "total_items": len(source_paths)},
+                )
+                return
+
             if not os.path.exists(src):
                 errors.append(f"Source not found: {src}")
                 continue
@@ -120,16 +195,15 @@ def perform_paste(op_id: str, source_paths: List[str], dest_path: str, conflict_
             src_name = os.path.basename(src)
             final_dest = os.path.join(dest_path, src_name)
 
-            # Conflict resolution
             if os.path.exists(final_dest):
-                if conflict_resolution == 'skip':
+                if conflict_resolution == "skip":
                     continue
-                elif conflict_resolution == 'overwrite':
+                if conflict_resolution == "overwrite":
                     if os.path.isdir(final_dest):
                         shutil.rmtree(final_dest)
                     else:
                         os.remove(final_dest)
-                elif conflict_resolution == 'rename':
+                elif conflict_resolution == "rename":
                     base, ext = os.path.splitext(src_name)
                     counter = 1
                     while os.path.exists(final_dest):
@@ -139,7 +213,6 @@ def perform_paste(op_id: str, source_paths: List[str], dest_path: str, conflict_
                         if counter > 1000:
                             raise Exception("Too many name conflicts")
 
-            # Perform copy/move
             if is_move:
                 shutil.move(src, final_dest)
             else:
@@ -147,7 +220,20 @@ def perform_paste(op_id: str, source_paths: List[str], dest_path: str, conflict_
                     shutil.copytree(src, final_dest)
                 else:
                     shutil.copy2(src, final_dest)
-            
+
+            if _is_cancelled(manager, op_id):
+                if os.path.exists(final_dest):
+                    if os.path.isdir(final_dest):
+                        shutil.rmtree(final_dest)
+                    else:
+                        os.remove(final_dest)
+                _mark_cancelled(
+                    op,
+                    manager,
+                    {"processed_items": processed, "total_items": len(source_paths)},
+                )
+                return
+
             processed += 1
             op.processed_items = processed
             op.progress = int((processed / len(source_paths)) * 100)
@@ -155,24 +241,16 @@ def perform_paste(op_id: str, source_paths: List[str], dest_path: str, conflict_
 
         if errors:
             op.error_message = "; ".join(errors)
-            if processed > 0:
-                 # Partial success? requirements say 207 but this is internal status
-                 # Let's mark completed if fully done, or failed if mostly failed?
-                 # Or just COMPLETED with error message populated?
-                 # Let's stick to COMPLETED if at least some worked, but maybe we need a PARTIAL status?
-                 # Use FAILED if all failed.
-                 if processed == 0:
-                     op.status = OperationStatus.FAILED
-                 else:
-                     op.status = OperationStatus.COMPLETED
+            op.status = (
+                OperationStatus.COMPLETED if processed > 0 else OperationStatus.FAILED
+            )
         else:
-             op.status = OperationStatus.COMPLETED
-             
+            op.status = OperationStatus.COMPLETED
+
         op.completed_at = datetime.utcnow()
         manager.update_operation(op)
-
-    except Exception as e:
+    except Exception as exc:
         op.status = OperationStatus.FAILED
-        op.error_message = str(e) + "\n" + traceback.format_exc()
+        op.error_message = str(exc) + "\n" + traceback.format_exc()
         op.completed_at = datetime.utcnow()
         manager.update_operation(op)

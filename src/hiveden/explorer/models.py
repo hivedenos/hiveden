@@ -1,4 +1,4 @@
-from typing import List, Optional, Any, Union, Dict
+from typing import Any, Dict, List, Optional, Union
 from datetime import datetime
 from pydantic import Field
 
@@ -30,6 +30,7 @@ class OperationType(str, Enum):
     MOVE = "move"
     SEARCH = "search"
     DELETE = "delete"
+    UPLOAD = "upload"
 
 
 class OperationStatus(str, Enum):
@@ -37,6 +38,7 @@ class OperationStatus(str, Enum):
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 # --- DB Models (Representations) ---
@@ -73,10 +75,10 @@ class ExplorerOperation(BaseModel):
     progress: int = 0
     total_items: Optional[int] = None
     processed_items: int = 0
-    source_paths: Optional[str] = None  # JSON string in DB
+    source_paths: Optional[Union[str, List[str]]] = None
     destination_path: Optional[str] = None
     error_message: Optional[str] = None
-    result: Optional[str] = None  # JSON string in DB
+    result: Optional[Union[str, Dict[str, Any], List[Any]]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
@@ -134,7 +136,7 @@ class CreateDirectoryRequest(BaseModel):
 
 class DeleteRequest(BaseModel):
     paths: List[str]
-    recursive: bool = False
+    recursive: bool = True
 
 
 class RenameRequest(BaseModel):
@@ -193,6 +195,17 @@ class SearchRequest(BaseModel):
     show_hidden: bool = False
 
 
+class UploadFileDescriptor(BaseModel):
+    name: str
+    size: int = 0
+
+
+class UploadPrepareRequest(BaseModel):
+    destination: str
+    files: List[UploadFileDescriptor]
+    overwrite: bool = False
+
+
 class USBDevice(BaseModel):
     device: str
     mount_point: Optional[str] = None
@@ -226,6 +239,20 @@ class GenericResponse(BaseModel):
 class DeleteResponse(GenericResponse):
     deleted: List[str] = []
     failed: List[Dict[str, str]] = []
+
+
+class UploadPrepareResponse(GenericResponse):
+    operation_id: str
+    operation: ExplorerOperation
+    destination: str
+    files: List[Dict[str, Any]] = []
+
+
+class UploadResponse(GenericResponse):
+    operation_id: str
+    operation: ExplorerOperation
+    destination: str
+    uploaded: List[FileEntry] = []
 
 
 class OperationResponse(BaseModel):

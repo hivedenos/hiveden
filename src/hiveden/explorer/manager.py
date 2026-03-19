@@ -1,21 +1,71 @@
 import json
-from typing import List, Optional, Dict, Any
-from datetime import datetime
 import uuid
+from datetime import datetime
+from typing import Any, Dict, List, Optional, cast
 
 from hiveden.db.session import get_db_manager
 from hiveden.explorer.models import (
     ExplorerConfig,
-    FilesystemLocation,
     ExplorerOperation,
-    OperationStatus
+    FilesystemLocation,
+    OperationStatus,
 )
+
 
 class ExplorerManager:
     def __init__(self):
         self.db = get_db_manager()
 
-    # --- Config ---
+    @staticmethod
+    def _parse_datetime(value: Optional[datetime]) -> Optional[datetime]:
+        if isinstance(value, datetime) or value is None:
+            return value
+        return datetime.fromisoformat(value)
+
+    def _build_location(self, row: Dict[str, Any]) -> FilesystemLocation:
+        return FilesystemLocation(
+            id=row["id"],
+            key=row["key"],
+            label=row["label"],
+            name=row["label"],
+            path=row["path"],
+            type=row["type"],
+            description=row["description"],
+            is_editable=row["is_editable"],
+            created_at=self._parse_datetime(row["created_at"]),
+            updated_at=self._parse_datetime(row["updated_at"]),
+        )
+
+    def _build_operation(self, row: Dict[str, Any]) -> ExplorerOperation:
+        source_paths = row["source_paths"]
+        if isinstance(source_paths, str):
+            try:
+                source_paths = json.loads(source_paths)
+            except (TypeError, ValueError):
+                pass
+
+        result = row["result"]
+        if isinstance(result, str):
+            try:
+                result = json.loads(result)
+            except (TypeError, ValueError):
+                pass
+
+        return ExplorerOperation(
+            id=row["id"],
+            operation_type=row["operation_type"],
+            status=row["status"],
+            progress=row["progress"],
+            total_items=row["total_items"],
+            processed_items=row["processed_items"],
+            source_paths=source_paths,
+            destination_path=row["destination_path"],
+            error_message=row["error_message"],
+            result=result,
+            created_at=self._parse_datetime(row["created_at"]),
+            updated_at=self._parse_datetime(row["updated_at"]),
+            completed_at=self._parse_datetime(row["completed_at"]),
+        )
 
     def get_config(self) -> Dict[str, str]:
         conn = self.db.get_connection()
@@ -23,14 +73,14 @@ class ExplorerManager:
             cursor = conn.cursor()
             cursor.execute("SELECT key, value FROM explorer_config")
             rows = cursor.fetchall()
-            config = {}
-            # Defaults
-            config["show_hidden_files"] = "false"
-            config["usb_mount_path"] = "/media"
-            config["root_directory"] = "/"
-            
+            config = {
+                "show_hidden_files": "false",
+                "usb_mount_path": "/media",
+                "root_directory": "/",
+            }
             for row in rows:
-                config[row[0]] = row[1]
+                row_data = cast(Dict[str, Any], row)
+                config[row_data["key"]] = row_data["value"]
             return config
         finally:
             conn.close()
@@ -39,24 +89,21 @@ class ExplorerManager:
         conn = self.db.get_connection()
         try:
             cursor = conn.cursor()
-            # Check if exists
             cursor.execute("SELECT id FROM explorer_config WHERE key = %s", (key,))
             row = cursor.fetchone()
             if row:
                 cursor.execute(
                     "UPDATE explorer_config SET value = %s, updated_at = CURRENT_TIMESTAMP WHERE key = %s",
-                    (value, key)
+                    (value, key),
                 )
             else:
                 cursor.execute(
                     "INSERT INTO explorer_config (key, value) VALUES (%s, %s)",
-                    (key, value)
+                    (key, value),
                 )
             conn.commit()
         finally:
             conn.close()
-
-    # --- Locations (Bookmarks) ---
 
     def get_locations(self) -> List[FilesystemLocation]:
         conn = self.db.get_connection()
@@ -66,40 +113,41 @@ class ExplorerManager:
                 "SELECT id, key, label, path, type, description, is_editable, created_at, updated_at FROM filesystem_locations ORDER BY label"
             )
             rows = cursor.fetchall()
-            locations = []
-            for row in rows:
-                locations.append(FilesystemLocation(
-                    id=row[0],
-                    key=row[1],
-                    label=row[2],
-                    name=row[2],
-                    path=row[3],
-                    type=row[4],
-                    description=row[5],
-                    is_editable=row[6],
-                    created_at=row[7] if isinstance(row[7], datetime) else datetime.fromisoformat(row[7]) if row[7] else None,
-                    updated_at=row[8] if isinstance(row[8], datetime) else datetime.fromisoformat(row[8]) if row[8] else None
-                ))
-            return locations
+            return [self._build_location(cast(Dict[str, Any], row)) for row in rows]
         finally:
             conn.close()
 
-    def create_location(self, label: str, path: str, type: str = "user_bookmark", description: Optional[str] = None) -> FilesystemLocation:
+    def create_location(
+        self,
+        label: str,
+        path: str,
+        type: str = "user_bookmark",
+        description: Optional[str] = None,
+    ) -> FilesystemLocation:
         conn = self.db.get_connection()
         try:
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO filesystem_locations (label, path, type, description) VALUES (%s, %s, %s, %s) RETURNING id",
-                (label, path, type, description)
+                (label, path, type, description),
             )
-            location_id = cursor.fetchone()[0]
+            row = cast(Dict[str, Any], cursor.fetchone())
+            location_id = row["id"]
             conn.commit()
-            
-            return self.get_location(location_id)
+            location = self.get_location(location_id)
+            if location is None:
+                raise ValueError(f"Location {location_id} was not created")
+            return location
         finally:
             conn.close()
 
-    def update_location(self, location_id: int, label: Optional[str] = None, path: Optional[str] = None, description: Optional[str] = None) -> Optional[FilesystemLocation]:
+    def update_location(
+        self,
+        location_id: int,
+        label: Optional[str] = None,
+        path: Optional[str] = None,
+        description: Optional[str] = None,
+    ) -> Optional[FilesystemLocation]:
         conn = self.db.get_connection()
         try:
             cursor = conn.cursor()
@@ -114,17 +162,15 @@ class ExplorerManager:
             if description is not None:
                 updates.append("description = %s")
                 params.append(description)
-            
             if not updates:
                 return self.get_location(location_id)
-            
             updates.append("updated_at = CURRENT_TIMESTAMP")
-            query = f"UPDATE filesystem_locations SET {', '.join(updates)} WHERE id = %s"
+            query = (
+                f"UPDATE filesystem_locations SET {', '.join(updates)} WHERE id = %s"
+            )
             params.append(location_id)
-            
             cursor.execute(query, tuple(params))
             conn.commit()
-            
             return self.get_location(location_id)
         finally:
             conn.close()
@@ -135,23 +181,12 @@ class ExplorerManager:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT id, key, label, path, type, description, is_editable, created_at, updated_at FROM filesystem_locations WHERE id = %s",
-                (location_id,)
+                (location_id,),
             )
             row = cursor.fetchone()
             if not row:
                 return None
-            return FilesystemLocation(
-                id=row[0],
-                key=row[1],
-                label=row[2],
-                name=row[2],
-                path=row[3],
-                type=row[4],
-                description=row[5],
-                is_editable=row[6],
-                created_at=row[7] if isinstance(row[7], datetime) else datetime.fromisoformat(row[7]) if row[7] else None,
-                updated_at=row[8] if isinstance(row[8], datetime) else datetime.fromisoformat(row[8]) if row[8] else None
-            )
+            return self._build_location(cast(Dict[str, Any], row))
         finally:
             conn.close()
 
@@ -159,28 +194,30 @@ class ExplorerManager:
         conn = self.db.get_connection()
         try:
             cursor = conn.cursor()
-            # Prevent deleting system locations if needed, but schema allows it if not enforced here.
-            # Assuming strictly UI driven 'is_editable' check happens there, but good to check here.
-            cursor.execute("SELECT is_editable FROM filesystem_locations WHERE id = %s", (location_id,))
+            cursor.execute(
+                "SELECT is_editable FROM filesystem_locations WHERE id = %s",
+                (location_id,),
+            )
             row = cursor.fetchone()
-            if row and not row[0]:
+            if row and not cast(Dict[str, Any], row)["is_editable"]:
                 raise ValueError("Cannot delete a system location")
-
-            cursor.execute("DELETE FROM filesystem_locations WHERE id = %s", (location_id,))
+            cursor.execute(
+                "DELETE FROM filesystem_locations WHERE id = %s", (location_id,)
+            )
             conn.commit()
         finally:
             conn.close()
 
-    # --- Operations ---
-
-    def create_operation(self, op_type: str, status: str = OperationStatus.PENDING) -> ExplorerOperation:
+    def create_operation(
+        self, op_type: str, status: str = OperationStatus.PENDING
+    ) -> ExplorerOperation:
         op_id = str(uuid.uuid4())
         conn = self.db.get_connection()
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO explorer_operations (id, operation_type, status) VALUES (?, ?, ?)",
-                (op_id, op_type, status)
+                "INSERT INTO explorer_operations (id, operation_type, status) VALUES (%s, %s, %s)",
+                (op_id, op_type, status),
             )
             conn.commit()
             return ExplorerOperation(id=op_id, operation_type=op_type, status=status)
@@ -191,29 +228,42 @@ class ExplorerManager:
         conn = self.db.get_connection()
         try:
             cursor = conn.cursor()
-            
+
             def json_serial(obj):
-                """JSON serializer for objects not serializable by default json code"""
                 if isinstance(obj, datetime):
                     return obj.isoformat()
                 raise TypeError(f"Type {type(obj)} not serializable")
 
-            source_paths_json = json.dumps(op.source_paths, default=json_serial) if isinstance(op.source_paths, list) else op.source_paths
-            result_json = json.dumps(op.result, default=json_serial) if isinstance(op.result, (dict, list)) else op.result
-
+            source_paths_json = (
+                json.dumps(op.source_paths, default=json_serial)
+                if isinstance(op.source_paths, list)
+                else op.source_paths
+            )
+            result_json = (
+                json.dumps(op.result, default=json_serial)
+                if isinstance(op.result, (dict, list))
+                else op.result
+            )
             cursor.execute(
                 """
-                UPDATE explorer_operations 
-                SET status = ?, progress = ?, total_items = ?, processed_items = ?,
-                    source_paths = ?, destination_path = ?, error_message = ?, result = ?,
-                    updated_at = CURRENT_TIMESTAMP, completed_at = ?
-                WHERE id = ?
+                UPDATE explorer_operations
+                SET status = %s, progress = %s, total_items = %s, processed_items = %s,
+                    source_paths = %s, destination_path = %s, error_message = %s, result = %s,
+                    updated_at = CURRENT_TIMESTAMP, completed_at = %s
+                WHERE id = %s
                 """,
                 (
-                    op.status, op.progress, op.total_items, op.processed_items,
-                    source_paths_json, op.destination_path, op.error_message, result_json,
-                    op.completed_at, op.id
-                )
+                    op.status,
+                    op.progress,
+                    op.total_items,
+                    op.processed_items,
+                    source_paths_json,
+                    op.destination_path,
+                    op.error_message,
+                    result_json,
+                    op.completed_at,
+                    op.id,
+                ),
             )
             conn.commit()
         finally:
@@ -224,58 +274,28 @@ class ExplorerManager:
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT id, operation_type, status, progress, total_items, processed_items, source_paths, destination_path, error_message, result, created_at, updated_at, completed_at FROM explorer_operations WHERE id = ?",
-                (op_id,)
+                "SELECT id, operation_type, status, progress, total_items, processed_items, source_paths, destination_path, error_message, result, created_at, updated_at, completed_at FROM explorer_operations WHERE id = %s",
+                (op_id,),
             )
             row = cursor.fetchone()
             if not row:
                 return None
-            
-            return ExplorerOperation(
-                id=row[0],
-                operation_type=row[1],
-                status=row[2],
-                progress=row[3],
-                total_items=row[4],
-                processed_items=row[5],
-                source_paths=row[6], # Should parse JSON if needed, keeping as string for now if compatible with model
-                destination_path=row[7],
-                error_message=row[8],
-                result=row[9],
-                created_at=row[10],
-                updated_at=row[11],
-                completed_at=row[12]
-            )
+            return self._build_operation(cast(Dict[str, Any], row))
         finally:
             conn.close()
 
-    def get_operations(self, limit: int = 50, offset: int = 0) -> List[ExplorerOperation]:
+    def get_operations(
+        self, limit: int = 50, offset: int = 0
+    ) -> List[ExplorerOperation]:
         conn = self.db.get_connection()
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT id, operation_type, status, progress, total_items, processed_items, source_paths, destination_path, error_message, result, created_at, updated_at, completed_at FROM explorer_operations ORDER BY created_at DESC LIMIT ? OFFSET ?",
-                (limit, offset)
+                "SELECT id, operation_type, status, progress, total_items, processed_items, source_paths, destination_path, error_message, result, created_at, updated_at, completed_at FROM explorer_operations ORDER BY created_at DESC LIMIT %s OFFSET %s",
+                (limit, offset),
             )
             rows = cursor.fetchall()
-            ops = []
-            for row in rows:
-                ops.append(ExplorerOperation(
-                    id=row[0],
-                    operation_type=row[1],
-                    status=row[2],
-                    progress=row[3],
-                    total_items=row[4],
-                    processed_items=row[5],
-                    source_paths=row[6],
-                    destination_path=row[7],
-                    error_message=row[8],
-                    result=row[9],
-                    created_at=row[10],
-                    updated_at=row[11],
-                    completed_at=row[12]
-                ))
-            return ops
+            return [self._build_operation(cast(Dict[str, Any], row)) for row in rows]
         finally:
             conn.close()
 
@@ -283,7 +303,7 @@ class ExplorerManager:
         conn = self.db.get_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM explorer_operations WHERE id = ?", (op_id,))
+            cursor.execute("DELETE FROM explorer_operations WHERE id = %s", (op_id,))
             conn.commit()
         finally:
             conn.close()

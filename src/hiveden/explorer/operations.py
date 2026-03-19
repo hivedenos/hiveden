@@ -8,11 +8,16 @@ import shutil
 import stat
 import subprocess
 from datetime import datetime
-from typing import Any, List, Optional, Tuple
+from typing import Any, BinaryIO, Callable, List, Optional, Tuple
 
 from hiveden.explorer.models import FileEntry, FileType, SortBy, SortOrder, USBDevice
 
 logger = logging.getLogger(__name__)
+
+
+class UploadCancelledError(Exception):
+    pass
+
 
 class ExplorerService:
     def __init__(self, root_directory: str = "/"):
@@ -33,11 +38,12 @@ class ExplorerService:
         return os.path.abspath(path)
 
     def _human_readable_size(self, size_bytes: int) -> str:
-        for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
-            if size_bytes < 1024.0:
-                return f"{size_bytes:.1f} {unit}"
-            size_bytes /= 1024.0
-        return f"{size_bytes:.1f} PB"
+        size = float(size_bytes)
+        for unit in ["B", "KB", "MB", "GB", "TB"]:
+            if size < 1024.0:
+                return f"{size:.1f} {unit}"
+            size /= 1024.0
+        return f"{size:.1f} PB"
 
     def _get_file_type(self, path: str, st: os.stat_result) -> FileType:
         if stat.S_ISDIR(st.st_mode):
@@ -80,7 +86,7 @@ class ExplorerService:
             modified=datetime.fromtimestamp(st.st_mtime),
             accessed=datetime.fromtimestamp(st.st_atime),
             created=datetime.fromtimestamp(st.st_ctime),
-            is_hidden=os.path.basename(path).startswith('.'),
+            is_hidden=os.path.basename(path).startswith("."),
             is_symlink=is_symlink,
             symlink_target=symlink_target,
             mime_type=self._get_mime_type(path),
@@ -91,10 +97,16 @@ class ExplorerService:
             hard_links=st.st_nlink,
             is_readable=os.access(path, os.R_OK),
             is_writable=os.access(path, os.W_OK),
-            is_executable=os.access(path, os.X_OK)
+            is_executable=os.access(path, os.X_OK),
         )
 
-    def list_directory(self, path: str, show_hidden: bool = False, sort_by: SortBy = SortBy.NAME, sort_order: SortOrder = SortOrder.ASC) -> Tuple[List[FileEntry], int, int]:
+    def list_directory(
+        self,
+        path: str,
+        show_hidden: bool = False,
+        sort_by: SortBy = SortBy.NAME,
+        sort_order: SortOrder = SortOrder.ASC,
+    ) -> Tuple[List[FileEntry], int, int]:
         abs_path = self._resolve_path(path)
         if not os.path.exists(abs_path):
             raise FileNotFoundError(f"Path not found: {path}")
@@ -106,7 +118,7 @@ class ExplorerService:
 
         with os.scandir(abs_path) as it:
             for entry in it:
-                if not show_hidden and entry.name.startswith('.'):
+                if not show_hidden and entry.name.startswith("."):
                     continue
 
                 try:
@@ -141,6 +153,58 @@ class ExplorerService:
             os.mkdir(abs_path)
         return abs_path
 
+    def save_uploaded_file(
+        self,
+        destination: str,
+        filename: str,
+        file_obj: BinaryIO,
+        size: Optional[int] = None,
+        overwrite: bool = False,
+        progress_callback: Optional[Callable[[int], None]] = None,
+        cancel_callback: Optional[Callable[[], bool]] = None,
+        chunk_size: int = 1024 * 1024,
+    ) -> FileEntry:
+        if not filename:
+            raise ValueError("Uploaded file is missing a filename")
+
+        destination_dir = self._resolve_path(destination)
+        if not os.path.exists(destination_dir):
+            raise FileNotFoundError(f"Path not found: {destination}")
+        if not os.path.isdir(destination_dir):
+            raise NotADirectoryError(f"Path is not a directory: {destination}")
+
+        safe_name = os.path.basename(filename)
+        if safe_name in {"", ".", ".."}:
+            raise ValueError("Invalid upload filename")
+
+        target_path = os.path.join(destination_dir, safe_name)
+        if os.path.exists(target_path) and not overwrite:
+            raise FileExistsError(f"Destination exists: {target_path}")
+
+        try:
+            with open(target_path, "wb") as output:
+                uploaded_bytes = 0
+                while True:
+                    if cancel_callback and cancel_callback():
+                        raise UploadCancelledError(f"Upload cancelled: {filename}")
+
+                    chunk = file_obj.read(chunk_size)
+                    if not chunk:
+                        break
+                    output.write(chunk)
+                    uploaded_bytes += len(chunk)
+                    if progress_callback:
+                        progress_callback(uploaded_bytes)
+
+                if progress_callback and size == 0:
+                    progress_callback(0)
+        except Exception:
+            if os.path.exists(target_path):
+                os.remove(target_path)
+            raise
+
+        return self.get_file_entry(target_path)
+
     def delete_path(self, path: str, recursive: bool = False):
         abs_path = self._resolve_path(path)
         if not os.path.exists(abs_path):
@@ -157,7 +221,9 @@ class ExplorerService:
         else:
             os.remove(abs_path)
 
-    def rename_path(self, source: str, destination: str, overwrite: bool = False) -> str:
+    def rename_path(
+        self, source: str, destination: str, overwrite: bool = False
+    ) -> str:
         abs_source = self._resolve_path(source)
         abs_dest = self._resolve_path(destination)
 
@@ -179,12 +245,19 @@ class ExplorerService:
         try:
             # Use lsblk to get JSON output
             result = subprocess.run(
-                ['lsblk', '-J', '-o', 'NAME,MOUNTPOINT,SIZE,FSTYPE,LABEL,VENDOR,MODEL,SERIAL,RM,RO,TYPE,UUID'],
-                capture_output=True, text=True, check=True
+                [
+                    "lsblk",
+                    "-J",
+                    "-o",
+                    "NAME,MOUNTPOINT,SIZE,FSTYPE,LABEL,VENDOR,MODEL,SERIAL,RM,RO,TYPE,UUID",
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
             )
             data = json.loads(result.stdout)
 
-            for device in data.get('blockdevices', []):
+            for device in data.get("blockdevices", []):
                 self._process_lsblk_device(device, devices)
 
         except Exception as e:
@@ -197,11 +270,13 @@ class ExplorerService:
         # Check if it's removable (RM="1" or True) and has a mountpoint
         # Note: lsblk JSON output types can vary slightly by version.
 
-        is_removable = str(device_info.get('rm', '0')) == '1' or device_info.get('rm') is True
-        mount_point = device_info.get('mountpoint')
+        is_removable = (
+            str(device_info.get("rm", "0")) == "1" or device_info.get("rm") is True
+        )
+        mount_point = device_info.get("mountpoint")
 
         # We generally want children partitions if available
-        children = device_info.get('children', [])
+        children = device_info.get("children", [])
         if children:
             for child in children:
                 self._process_lsblk_device(child, devices_list)
@@ -225,20 +300,22 @@ class ExplorerService:
             except OSError:
                 pass
 
-            devices_list.append(USBDevice(
-                device=f"/dev/{device_info.get('name')}",
-                mount_point=mount_point,
-                label=device_info.get('label'),
-                filesystem=device_info.get('fstype'),
-                total_size=total,
-                total_size_human=self._human_readable_size(total),
-                used_size=used,
-                used_size_human=self._human_readable_size(used),
-                free_size=free,
-                free_size_human=self._human_readable_size(free),
-                usage_percent=round(usage_pct, 1),
-                is_removable=True,
-                vendor=device_info.get('vendor'),
-                model=device_info.get('model'),
-                serial=device_info.get('serial')
-            ))
+            devices_list.append(
+                USBDevice(
+                    device=f"/dev/{device_info.get('name')}",
+                    mount_point=mount_point,
+                    label=device_info.get("label"),
+                    filesystem=device_info.get("fstype"),
+                    total_size=total,
+                    total_size_human=self._human_readable_size(total),
+                    used_size=used,
+                    used_size_human=self._human_readable_size(used),
+                    free_size=free,
+                    free_size_human=self._human_readable_size(free),
+                    usage_percent=round(usage_pct, 1),
+                    is_removable=True,
+                    vendor=device_info.get("vendor"),
+                    model=device_info.get("model"),
+                    serial=device_info.get("serial"),
+                )
+            )
