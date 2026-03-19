@@ -141,6 +141,79 @@ def test_upload_file_to_destination_directory_tracks_operation(tmp_path):
     assert (target_dir / "hello.txt").read_text() == "hello world"
 
 
+def test_stream_upload_updates_prepared_operation_file(tmp_path):
+    target_dir = tmp_path / "uploads"
+    target_dir.mkdir()
+
+    client, manager, original_get_service, original_get_manager = _build_client(
+        tmp_path
+    )
+    try:
+        prepare = client.post(
+            "/explorer/upload/prepare",
+            json={
+                "destination": str(target_dir),
+                "files": [{"name": "video.bin", "size": 10}],
+            },
+        )
+        operation_id = prepare.json()["operation_id"]
+        response = client.put(
+            f"/explorer/upload/stream/{operation_id}?filename=video.bin&size=10",
+            content=b"0123456789",
+            headers={"content-type": "application/octet-stream"},
+        )
+    finally:
+        _restore_dependencies(original_get_service, original_get_manager)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["operation_id"] == operation_id
+    assert body["uploaded"][0]["name"] == "video.bin"
+    assert body["operation"]["result"]["files"][0]["uploaded_bytes"] == 10
+    assert body["operation"]["result"]["files"][0]["progress"] == 100
+    assert body["operation"]["result"]["summary"]["completed"] == 1
+    assert (target_dir / "video.bin").read_bytes() == b"0123456789"
+    operation = manager.get_operation(operation_id)
+    assert operation is not None
+    assert operation.result["files"][0]["status"] == OperationStatus.COMPLETED
+
+
+def test_stream_upload_keeps_operation_in_progress_when_files_remain(tmp_path):
+    target_dir = tmp_path / "uploads"
+    target_dir.mkdir()
+
+    client, manager, original_get_service, original_get_manager = _build_client(
+        tmp_path
+    )
+    try:
+        prepare = client.post(
+            "/explorer/upload/prepare",
+            json={
+                "destination": str(target_dir),
+                "files": [
+                    {"name": "first.bin", "size": 4},
+                    {"name": "second.bin", "size": 4},
+                ],
+            },
+        )
+        operation_id = prepare.json()["operation_id"]
+        response = client.put(
+            f"/explorer/upload/stream/{operation_id}?filename=first.bin&size=4",
+            content=b"data",
+            headers={"content-type": "application/octet-stream"},
+        )
+    finally:
+        _restore_dependencies(original_get_service, original_get_manager)
+
+    assert response.status_code == 200
+    operation = manager.get_operation(operation_id)
+    assert operation is not None
+    assert operation.status == OperationStatus.IN_PROGRESS
+    assert operation.result["summary"]["completed"] == 1
+    assert operation.result["summary"]["pending"] == 1
+    assert operation.result["files"][1]["status"] == OperationStatus.PENDING
+
+
 def test_upload_reports_partial_success_and_operation_progress(tmp_path):
     target_dir = tmp_path / "uploads"
     target_dir.mkdir()

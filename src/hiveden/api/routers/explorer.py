@@ -5,6 +5,7 @@ from fastapi import (
     Form,
     HTTPException,
     Query,
+    Request,
     UploadFile,
     status,
 )
@@ -226,6 +227,53 @@ def _upload_error_summary(items: List[Dict[str, Any]]) -> Optional[str]:
     return message or None
 
 
+def _get_operation_files_progress(op: ExplorerOperation) -> List[Dict[str, Any]]:
+    if isinstance(op.result, dict) and isinstance(op.result.get("files"), list):
+        return [dict(item) for item in op.result["files"]]
+    return []
+
+
+def _find_or_create_upload_file_progress(
+    files_progress: List[Dict[str, Any]],
+    destination: str,
+    filename: str,
+    size: int,
+    overwrite: bool,
+) -> Dict[str, Any]:
+    for item in files_progress:
+        if item.get("name") == filename:
+            item["size"] = size or item.get("size", 0)
+            if item.get("result") is None:
+                item["result"] = _build_upload_file_progress(
+                    destination,
+                    filename,
+                    item["size"],
+                    overwrite,
+                )["result"]
+            return item
+
+    item = _build_upload_file_progress(destination, filename, size, overwrite)
+    files_progress.append(item)
+    return item
+
+
+def _derive_upload_status(files_progress: List[Dict[str, Any]]) -> str:
+    statuses = [item["status"] for item in files_progress]
+    if not statuses:
+        return OperationStatus.PENDING
+    if any(status == OperationStatus.IN_PROGRESS for status in statuses):
+        return OperationStatus.IN_PROGRESS
+    if all(status == OperationStatus.PENDING for status in statuses):
+        return OperationStatus.PENDING
+    if any(status == OperationStatus.PENDING for status in statuses):
+        return OperationStatus.IN_PROGRESS
+    if any(status == OperationStatus.CANCELLED for status in statuses):
+        return OperationStatus.CANCELLED
+    if all(status == "failed" for status in statuses):
+        return OperationStatus.FAILED
+    return OperationStatus.COMPLETED
+
+
 # --- Navigation ---
 
 
@@ -363,6 +411,170 @@ def check_upload_conflicts(req: UploadPrepareRequest):
         "destination": destination_dir,
         "files": files_progress,
     }
+
+
+@router.put("/upload/stream/{operation_id}", response_model=UploadResponse)
+async def stream_upload_file(
+    operation_id: str,
+    request: Request,
+    filename: str = Query(...),
+    size: int = Query(0, ge=0),
+    overwrite: bool = Query(False),
+):
+    manager = get_manager()
+    service = get_service()
+    op = manager.get_operation(operation_id)
+    if not op:
+        raise HTTPException(status_code=404, detail="Operation not found")
+    if op.operation_type != OperationType.UPLOAD:
+        raise HTTPException(status_code=400, detail="Operation is not an upload")
+    if op.status == OperationStatus.CANCELLED:
+        raise HTTPException(
+            status_code=409, detail="Upload operation has been cancelled"
+        )
+    if not op.destination_path:
+        raise HTTPException(
+            status_code=400, detail="Upload operation has no destination"
+        )
+
+    destination_dir = service._resolve_path(op.destination_path)
+    if not os.path.exists(destination_dir):
+        raise HTTPException(
+            status_code=404, detail=f"Path not found: {op.destination_path}"
+        )
+    if not os.path.isdir(destination_dir):
+        raise HTTPException(
+            status_code=400, detail=f"Path is not a directory: {op.destination_path}"
+        )
+
+    expected_size = size or int(request.headers.get("content-length", "0") or 0)
+    files_progress = _get_operation_files_progress(op)
+    item = _find_or_create_upload_file_progress(
+        files_progress,
+        destination_dir,
+        filename,
+        expected_size,
+        overwrite,
+    )
+
+    if item["status"] == OperationStatus.COMPLETED and not overwrite:
+        completed_op = manager.get_operation(op.id) or op
+        raise HTTPException(
+            status_code=409, detail=f"File already uploaded: {filename}"
+        )
+
+    target_path = os.path.join(destination_dir, os.path.basename(filename))
+    conflict = os.path.exists(target_path)
+    if conflict and not overwrite:
+        item["status"] = "skipped"
+        item["error_message"] = f"Destination exists: {target_path}"
+        item["result"] = {
+            "path": target_path,
+            "conflict": True,
+            "outcome": "skipped",
+        }
+        overall_status = _derive_upload_status(files_progress)
+        _sync_upload_operation(
+            manager,
+            op,
+            files_progress,
+            overall_status,
+            error_message=_upload_error_summary([item]),
+        )
+        raise HTTPException(status_code=409, detail=item["error_message"])
+
+    item["size"] = expected_size
+    item["uploaded_bytes"] = 0
+    item["progress"] = 0 if expected_size else 100
+    item["status"] = OperationStatus.IN_PROGRESS
+    item["error_message"] = None
+    item["result"] = {
+        "path": target_path,
+        "conflict": conflict,
+        "outcome": "overwrite" if conflict and overwrite else "create",
+    }
+    _sync_upload_operation(manager, op, files_progress, OperationStatus.IN_PROGRESS)
+
+    def is_cancelled() -> bool:
+        current = manager.get_operation(op.id)
+        return bool(current and current.status == OperationStatus.CANCELLED)
+
+    try:
+        uploaded_bytes = 0
+        with open(target_path, "wb") as output:
+            async for chunk in request.stream():
+                if is_cancelled():
+                    raise UploadCancelledError(f"Upload cancelled: {filename}")
+                if not chunk:
+                    continue
+                output.write(chunk)
+                uploaded_bytes += len(chunk)
+                item["uploaded_bytes"] = uploaded_bytes
+                if expected_size > 0:
+                    item["progress"] = int((uploaded_bytes / expected_size) * 100)
+                _sync_upload_operation(
+                    manager, op, files_progress, OperationStatus.IN_PROGRESS
+                )
+
+        if expected_size == 0:
+            item["size"] = uploaded_bytes
+            item["progress"] = 100
+        else:
+            item["uploaded_bytes"] = uploaded_bytes
+            item["progress"] = min(100, int((uploaded_bytes / expected_size) * 100))
+        entry = service.get_file_entry(target_path)
+        item["status"] = OperationStatus.COMPLETED
+        item["result"] = {
+            "path": entry.path,
+            "conflict": conflict,
+            "outcome": "overwritten" if conflict and overwrite else "created",
+        }
+    except UploadCancelledError as exc:
+        if os.path.exists(target_path):
+            os.remove(target_path)
+        item["status"] = OperationStatus.CANCELLED
+        item["error_message"] = str(exc)
+    except Exception as exc:
+        if os.path.exists(target_path):
+            os.remove(target_path)
+        item["status"] = "failed"
+        item["error_message"] = str(exc)
+        overall_status = _derive_upload_status(files_progress)
+        _sync_upload_operation(
+            manager,
+            op,
+            files_progress,
+            overall_status,
+            error_message=_upload_error_summary([item]),
+        )
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    overall_status = _derive_upload_status(files_progress)
+    _sync_upload_operation(
+        manager,
+        op,
+        files_progress,
+        overall_status,
+        error_message=_upload_error_summary(files_progress),
+    )
+    completed_op = manager.get_operation(op.id) or op
+    uploaded = []
+    if item["status"] == OperationStatus.COMPLETED:
+        uploaded.append(service.get_file_entry(target_path))
+
+    response = UploadResponse(
+        success=item["status"] == OperationStatus.COMPLETED,
+        message="File uploaded"
+        if uploaded
+        else item.get("error_message") or "Upload incomplete",
+        operation_id=op.id,
+        operation=completed_op,
+        destination=destination_dir,
+        uploaded=uploaded,
+    )
+    if item["status"] != OperationStatus.COMPLETED:
+        return JSONResponse(status_code=207, content=response.model_dump(mode="json"))
+    return response
 
 
 @router.post("/upload", response_model=UploadResponse, status_code=201)
