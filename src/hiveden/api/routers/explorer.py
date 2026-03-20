@@ -12,8 +12,9 @@ from fastapi import (
 from fastapi.responses import JSONResponse, FileResponse
 from typing import Any, Dict, List, Optional, cast
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
+import time
 
 from hiveden.explorer.models import (
     DirectoryListingResponse,
@@ -73,6 +74,16 @@ def _get_upload_size(upload: UploadFile) -> int:
     return size
 
 
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _parse_iso_datetime(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
 def _build_upload_operation_result(
     op_id: str,
     status: str,
@@ -89,6 +100,62 @@ def _build_upload_operation_result(
     progress = 100 if total_bytes == 0 and total_items else 0
     if total_bytes > 0:
         progress = int((uploaded_bytes / total_bytes) * 100)
+
+    started_values = [
+        _parse_iso_datetime(item.get("started_at"))
+        for item in files_progress
+        if item.get("started_at")
+    ]
+    started_values = [value for value in started_values if value is not None]
+    completed_values = [
+        _parse_iso_datetime(item.get("completed_at"))
+        for item in files_progress
+        if item.get("completed_at")
+    ]
+    completed_values = [value for value in completed_values if value is not None]
+    operation_started_at = (
+        min(started_values).isoformat().replace("+00:00", "Z")
+        if started_values
+        else None
+    )
+    operation_completed_at = (
+        max(completed_values).isoformat().replace("+00:00", "Z")
+        if completed_values
+        and status
+        in {
+            OperationStatus.COMPLETED,
+            OperationStatus.FAILED,
+            OperationStatus.CANCELLED,
+        }
+        else None
+    )
+    elapsed_seconds = None
+    average_upload_speed = None
+    if started_values:
+        end_time = (
+            max(completed_values)
+            if completed_values
+            and status
+            in {
+                OperationStatus.COMPLETED,
+                OperationStatus.FAILED,
+                OperationStatus.CANCELLED,
+            }
+            else datetime.now(timezone.utc)
+        )
+        elapsed_seconds = max((end_time - min(started_values)).total_seconds(), 0.0)
+        average_upload_speed = (
+            uploaded_bytes / elapsed_seconds if elapsed_seconds > 0 else 0.0
+        )
+
+    current_file = next(
+        (
+            item
+            for item in files_progress
+            if item["status"] == OperationStatus.IN_PROGRESS
+        ),
+        None,
+    )
 
     summary = {
         "created": sum(
@@ -119,6 +186,11 @@ def _build_upload_operation_result(
         ),
     }
 
+    public_files = [
+        {key: value for key, value in item.items() if not key.startswith("_")}
+        for item in files_progress
+    ]
+
     return {
         "operation_id": op_id,
         "status": status,
@@ -127,8 +199,22 @@ def _build_upload_operation_result(
         "processed_items": processed_items,
         "uploaded_bytes": uploaded_bytes,
         "total_bytes": total_bytes,
+        "started_at": operation_started_at,
+        "completed_at": operation_completed_at,
+        "elapsed_seconds": elapsed_seconds,
+        "average_upload_speed_bytes_per_sec": average_upload_speed,
+        "current_file_average_upload_speed_bytes_per_sec": current_file.get(
+            "average_upload_speed_bytes_per_sec"
+        )
+        if current_file
+        else None,
+        "current_file_current_upload_speed_bytes_per_sec": current_file.get(
+            "current_upload_speed_bytes_per_sec"
+        )
+        if current_file
+        else None,
         "summary": summary,
-        "files": files_progress,
+        "files": public_files,
     }
 
 
@@ -169,6 +255,14 @@ def _build_upload_file_progress(
         "uploaded_bytes": 0,
         "progress": 0 if size else 100,
         "status": OperationStatus.PENDING,
+        "started_at": None,
+        "completed_at": None,
+        "elapsed_seconds": None,
+        "average_upload_speed_bytes_per_sec": None,
+        "current_upload_speed_bytes_per_sec": None,
+        "_started_at_monotonic": None,
+        "_last_progress_at_monotonic": None,
+        "_last_uploaded_bytes": 0,
         "error_message": None,
         "result": {
             "path": target_path,
@@ -250,6 +344,14 @@ def _find_or_create_upload_file_progress(
                     item["size"],
                     overwrite,
                 )["result"]
+            item.setdefault("started_at", None)
+            item.setdefault("completed_at", None)
+            item.setdefault("elapsed_seconds", None)
+            item.setdefault("average_upload_speed_bytes_per_sec", None)
+            item.setdefault("current_upload_speed_bytes_per_sec", None)
+            item.setdefault("_started_at_monotonic", None)
+            item.setdefault("_last_progress_at_monotonic", None)
+            item.setdefault("_last_uploaded_bytes", 0)
             return item
 
     item = _build_upload_file_progress(destination, filename, size, overwrite)
@@ -488,6 +590,14 @@ async def stream_upload_file(
     item["progress"] = 0 if expected_size else 100
     item["status"] = OperationStatus.IN_PROGRESS
     item["error_message"] = None
+    item["started_at"] = _utc_now_iso()
+    item["completed_at"] = None
+    item["elapsed_seconds"] = 0.0
+    item["average_upload_speed_bytes_per_sec"] = 0.0
+    item["current_upload_speed_bytes_per_sec"] = 0.0
+    item["_started_at_monotonic"] = time.monotonic()
+    item["_last_progress_at_monotonic"] = item["_started_at_monotonic"]
+    item["_last_uploaded_bytes"] = 0
     item["result"] = {
         "path": target_path,
         "conflict": conflict,
@@ -510,6 +620,25 @@ async def stream_upload_file(
                 output.write(chunk)
                 uploaded_bytes += len(chunk)
                 item["uploaded_bytes"] = uploaded_bytes
+                now_monotonic = time.monotonic()
+                elapsed_seconds = max(
+                    now_monotonic - item["_started_at_monotonic"], 0.0
+                )
+                item["elapsed_seconds"] = elapsed_seconds
+                item["average_upload_speed_bytes_per_sec"] = (
+                    uploaded_bytes / elapsed_seconds if elapsed_seconds > 0 else 0.0
+                )
+                delta_time = max(
+                    now_monotonic - item["_last_progress_at_monotonic"], 0.0
+                )
+                delta_bytes = uploaded_bytes - item["_last_uploaded_bytes"]
+                item["current_upload_speed_bytes_per_sec"] = (
+                    delta_bytes / delta_time
+                    if delta_time > 0
+                    else item["current_upload_speed_bytes_per_sec"]
+                )
+                item["_last_progress_at_monotonic"] = now_monotonic
+                item["_last_uploaded_bytes"] = uploaded_bytes
                 if expected_size > 0:
                     item["progress"] = int((uploaded_bytes / expected_size) * 100)
                 _sync_upload_operation(
@@ -522,6 +651,17 @@ async def stream_upload_file(
         else:
             item["uploaded_bytes"] = uploaded_bytes
             item["progress"] = min(100, int((uploaded_bytes / expected_size) * 100))
+        end_monotonic = time.monotonic()
+        item["elapsed_seconds"] = max(
+            end_monotonic - item["_started_at_monotonic"], 0.0
+        )
+        item["average_upload_speed_bytes_per_sec"] = (
+            uploaded_bytes / item["elapsed_seconds"]
+            if item["elapsed_seconds"] > 0
+            else 0.0
+        )
+        item["current_upload_speed_bytes_per_sec"] = 0.0
+        item["completed_at"] = _utc_now_iso()
         entry = service.get_file_entry(target_path)
         item["status"] = OperationStatus.COMPLETED
         item["result"] = {
@@ -534,11 +674,15 @@ async def stream_upload_file(
             os.remove(target_path)
         item["status"] = OperationStatus.CANCELLED
         item["error_message"] = str(exc)
+        item["completed_at"] = _utc_now_iso()
+        item["current_upload_speed_bytes_per_sec"] = 0.0
     except Exception as exc:
         if os.path.exists(target_path):
             os.remove(target_path)
         item["status"] = "failed"
         item["error_message"] = str(exc)
+        item["completed_at"] = _utc_now_iso()
+        item["current_upload_speed_bytes_per_sec"] = 0.0
         overall_status = _derive_upload_status(files_progress)
         _sync_upload_operation(
             manager,

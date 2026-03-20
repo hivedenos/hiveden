@@ -171,6 +171,21 @@ def test_stream_upload_updates_prepared_operation_file(tmp_path):
     assert body["uploaded"][0]["name"] == "video.bin"
     assert body["operation"]["result"]["files"][0]["uploaded_bytes"] == 10
     assert body["operation"]["result"]["files"][0]["progress"] == 100
+    assert body["operation"]["result"]["files"][0]["started_at"] is not None
+    assert body["operation"]["result"]["files"][0]["completed_at"] is not None
+    assert body["operation"]["result"]["files"][0]["elapsed_seconds"] is not None
+    assert (
+        body["operation"]["result"]["files"][0]["average_upload_speed_bytes_per_sec"]
+        is not None
+    )
+    assert (
+        body["operation"]["result"]["files"][0]["current_upload_speed_bytes_per_sec"]
+        == 0.0
+    )
+    assert body["operation"]["result"]["started_at"] is not None
+    assert body["operation"]["result"]["completed_at"] is not None
+    assert body["operation"]["result"]["elapsed_seconds"] is not None
+    assert body["operation"]["result"]["average_upload_speed_bytes_per_sec"] is not None
     assert body["operation"]["result"]["summary"]["completed"] == 1
     assert (target_dir / "video.bin").read_bytes() == b"0123456789"
     operation = manager.get_operation(operation_id)
@@ -211,6 +226,9 @@ def test_stream_upload_keeps_operation_in_progress_when_files_remain(tmp_path):
     assert operation.status == OperationStatus.IN_PROGRESS
     assert operation.result["summary"]["completed"] == 1
     assert operation.result["summary"]["pending"] == 1
+    assert operation.result["average_upload_speed_bytes_per_sec"] is not None
+    assert operation.result["current_file_average_upload_speed_bytes_per_sec"] is None
+    assert operation.result["current_file_current_upload_speed_bytes_per_sec"] is None
     assert operation.result["files"][1]["status"] == OperationStatus.PENDING
 
 
