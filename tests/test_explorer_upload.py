@@ -141,6 +141,50 @@ def test_upload_file_to_destination_directory_tracks_operation(tmp_path):
     assert (target_dir / "hello.txt").read_text() == "hello world"
 
 
+def test_upload_directory_preserves_nested_relative_paths(tmp_path):
+    target_dir = tmp_path / "uploads"
+    target_dir.mkdir()
+
+    client, manager, original_get_service, original_get_manager = _build_client(
+        tmp_path
+    )
+    try:
+        response = client.post(
+            "/explorer/upload",
+            data={"destination": str(target_dir)},
+            files=[
+                (
+                    "files",
+                    (
+                        "project/src/main.py",
+                        b"print('ok')\n",
+                        "text/x-python",
+                    ),
+                ),
+                (
+                    "files",
+                    ("project/assets/logo.txt", b"logo", "text/plain"),
+                ),
+            ],
+        )
+    finally:
+        _restore_dependencies(original_get_service, original_get_manager)
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["operation"]["status"] == OperationStatus.COMPLETED
+    assert body["operation"]["result"]["summary"]["completed"] == 2
+    assert body["operation"]["result"]["files"][0]["name"] == "project/src/main.py"
+    assert body["operation"]["result"]["files"][1]["name"] == "project/assets/logo.txt"
+    assert (target_dir / "project" / "src" / "main.py").read_text() == "print('ok')\n"
+    assert (target_dir / "project" / "assets" / "logo.txt").read_text() == "logo"
+    operation = manager.get_operation("op-1")
+    assert operation is not None
+    assert operation.result["files"][0]["result"]["path"].endswith(
+        "project/src/main.py"
+    )
+
+
 def test_stream_upload_updates_prepared_operation_file(tmp_path):
     target_dir = tmp_path / "uploads"
     target_dir.mkdir()
@@ -191,6 +235,36 @@ def test_stream_upload_updates_prepared_operation_file(tmp_path):
     operation = manager.get_operation(operation_id)
     assert operation is not None
     assert operation.result["files"][0]["status"] == OperationStatus.COMPLETED
+
+
+def test_prepare_upload_detects_nested_conflicts(tmp_path):
+    target_dir = tmp_path / "uploads"
+    nested_dir = target_dir / "project" / "src"
+    nested_dir.mkdir(parents=True)
+    (nested_dir / "main.py").write_text("old")
+
+    client, _manager, original_get_service, original_get_manager = _build_client(
+        tmp_path
+    )
+    try:
+        response = client.post(
+            "/explorer/upload/prepare",
+            json={
+                "destination": str(target_dir),
+                "files": [
+                    {"name": "project/src/main.py", "size": 3},
+                    {"name": "project/src/utils.py", "size": 5},
+                ],
+            },
+        )
+    finally:
+        _restore_dependencies(original_get_service, original_get_manager)
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["files"][0]["result"]["conflict"] is True
+    assert body["files"][1]["result"]["conflict"] is False
+    assert body["files"][0]["result"]["path"].endswith("project/src/main.py")
 
 
 def test_stream_upload_keeps_operation_in_progress_when_files_remain(tmp_path):

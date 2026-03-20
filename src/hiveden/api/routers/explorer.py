@@ -242,12 +242,13 @@ def _sync_upload_operation(
 
 
 def _build_upload_file_progress(
+    service: ExplorerService,
     destination: str,
     filename: str,
     size: int,
     overwrite: bool,
 ) -> Dict[str, Any]:
-    target_path = os.path.join(destination, os.path.basename(filename))
+    target_path = cast(Any, service).resolve_upload_target_path(destination, filename)
     conflict = os.path.exists(target_path)
     return {
         "name": filename,
@@ -329,6 +330,7 @@ def _get_operation_files_progress(op: ExplorerOperation) -> List[Dict[str, Any]]
 
 def _find_or_create_upload_file_progress(
     files_progress: List[Dict[str, Any]],
+    service: ExplorerService,
     destination: str,
     filename: str,
     size: int,
@@ -339,6 +341,7 @@ def _find_or_create_upload_file_progress(
             item["size"] = size or item.get("size", 0)
             if item.get("result") is None:
                 item["result"] = _build_upload_file_progress(
+                    service,
                     destination,
                     filename,
                     item["size"],
@@ -354,7 +357,7 @@ def _find_or_create_upload_file_progress(
             item.setdefault("_last_uploaded_bytes", 0)
             return item
 
-    item = _build_upload_file_progress(destination, filename, size, overwrite)
+    item = _build_upload_file_progress(service, destination, filename, size, overwrite)
     files_progress.append(item)
     return item
 
@@ -471,12 +474,15 @@ def prepare_upload(req: UploadPrepareRequest):
             status_code=400, detail=f"Path is not a directory: {req.destination}"
         )
 
-    files_progress = [
-        _build_upload_file_progress(
-            destination_dir, file.name, file.size, req.overwrite
-        )
-        for file in req.files
-    ]
+    try:
+        files_progress = [
+            _build_upload_file_progress(
+                service, destination_dir, file.name, file.size, req.overwrite
+            )
+            for file in req.files
+        ]
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     op = _create_upload_operation(manager, destination_dir, files_progress)
     op = manager.get_operation(op.id) or op
     return UploadPrepareResponse(
@@ -501,12 +507,15 @@ def check_upload_conflicts(req: UploadPrepareRequest):
         raise HTTPException(
             status_code=400, detail=f"Path is not a directory: {req.destination}"
         )
-    files_progress = [
-        _build_upload_file_progress(
-            destination_dir, file.name, file.size, req.overwrite
-        )
-        for file in req.files
-    ]
+    try:
+        files_progress = [
+            _build_upload_file_progress(
+                service, destination_dir, file.name, file.size, req.overwrite
+            )
+            for file in req.files
+        ]
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     return {
         "success": True,
         "message": "Upload conflicts checked",
@@ -551,13 +560,20 @@ async def stream_upload_file(
 
     expected_size = size or int(request.headers.get("content-length", "0") or 0)
     files_progress = _get_operation_files_progress(op)
-    item = _find_or_create_upload_file_progress(
-        files_progress,
-        destination_dir,
-        filename,
-        expected_size,
-        overwrite,
-    )
+    try:
+        item = _find_or_create_upload_file_progress(
+            files_progress,
+            service,
+            destination_dir,
+            filename,
+            expected_size,
+            overwrite,
+        )
+        target_path = cast(Any, service).resolve_upload_target_path(
+            destination_dir, filename
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     if item["status"] == OperationStatus.COMPLETED and not overwrite:
         completed_op = manager.get_operation(op.id) or op
@@ -565,7 +581,6 @@ async def stream_upload_file(
             status_code=409, detail=f"File already uploaded: {filename}"
         )
 
-    target_path = os.path.join(destination_dir, os.path.basename(filename))
     conflict = os.path.exists(target_path)
     if conflict and not overwrite:
         item["status"] = "skipped"
@@ -611,6 +626,7 @@ async def stream_upload_file(
 
     try:
         uploaded_bytes = 0
+        os.makedirs(os.path.dirname(target_path), exist_ok=True)
         with open(target_path, "wb") as output:
             async for chunk in request.stream():
                 if is_cancelled():
@@ -734,15 +750,19 @@ async def upload_files(
     uploaded = []
     failed = []
 
-    files_progress = [
-        _build_upload_file_progress(
-            destination_dir,
-            upload.filename or "",
-            _get_upload_size(upload),
-            overwrite,
-        )
-        for upload in files
-    ]
+    try:
+        files_progress = [
+            _build_upload_file_progress(
+                service,
+                destination_dir,
+                upload.filename or "",
+                _get_upload_size(upload),
+                overwrite,
+            )
+            for upload in files
+        ]
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     op = _get_or_create_upload_operation(
         manager,
         destination_dir,

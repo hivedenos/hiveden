@@ -45,6 +45,29 @@ class ExplorerService:
             size /= 1024.0
         return f"{size:.1f} PB"
 
+    def _normalize_upload_path(self, filename: str) -> str:
+        normalized = os.path.normpath(filename.replace("\\", "/"))
+        if normalized in {"", ".", ".."}:
+            raise ValueError("Invalid upload filename")
+        if os.path.isabs(normalized):
+            raise ValueError("Upload filename must be relative")
+
+        parts = [part for part in normalized.split(os.sep) if part not in {"", "."}]
+        if not parts or any(part == ".." for part in parts):
+            raise ValueError("Upload filename must stay within destination")
+
+        return os.path.join(*parts)
+
+    def resolve_upload_target_path(self, destination: str, filename: str) -> str:
+        destination_dir = self._resolve_path(destination)
+        relative_path = self._normalize_upload_path(filename)
+        target_path = os.path.abspath(os.path.join(destination_dir, relative_path))
+
+        if os.path.commonpath([destination_dir, target_path]) != destination_dir:
+            raise ValueError("Upload filename must stay within destination")
+
+        return target_path
+
     def _get_file_type(self, path: str, st: os.stat_result) -> FileType:
         if stat.S_ISDIR(st.st_mode):
             return FileType.DIRECTORY
@@ -173,15 +196,14 @@ class ExplorerService:
         if not os.path.isdir(destination_dir):
             raise NotADirectoryError(f"Path is not a directory: {destination}")
 
-        safe_name = os.path.basename(filename)
-        if safe_name in {"", ".", ".."}:
-            raise ValueError("Invalid upload filename")
-
-        target_path = os.path.join(destination_dir, safe_name)
+        target_path = self.resolve_upload_target_path(destination_dir, filename)
         if os.path.exists(target_path) and not overwrite:
             raise FileExistsError(f"Destination exists: {target_path}")
 
         try:
+            parent_dir = os.path.dirname(target_path)
+            if parent_dir:
+                os.makedirs(parent_dir, exist_ok=True)
             with open(target_path, "wb") as output:
                 uploaded_bytes = 0
                 while True:
