@@ -344,6 +344,14 @@ class AppSummary(BaseModel):
     promotion_request_status: Optional[str] = None
 
 
+class AppInstalledContainer(BaseModel):
+    container_id: str
+    container_name: str
+    image: Optional[str] = None
+    status: Optional[str] = None
+    external: bool = False
+
+
 class AppDetail(AppSummary):
     website: Optional[str] = None
     repo: Optional[str] = None
@@ -357,6 +365,7 @@ class AppDetail(AppSummary):
     search: Dict[str, Any] = Field(default_factory=dict)
     dependencies: List[str] = Field(default_factory=list)
     source_updated_at: Optional[str] = None
+    installed_containers: List[AppInstalledContainer] = Field(default_factory=list)
 
 
 class AppInstallRequest(BaseModel):
@@ -405,11 +414,7 @@ class AppCacheClearInfo(BaseModel):
     job_id: Optional[str] = None
 
 
-class AppAdoptedContainer(BaseModel):
-    container_id: str
-    container_name: str
-    image: Optional[str] = None
-    status: Optional[str] = None
+class AppAdoptedContainer(AppInstalledContainer):
     external: bool = True
 
 

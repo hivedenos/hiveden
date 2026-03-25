@@ -40,6 +40,31 @@ class FakeJobManager:
 
 
 class FakeCatalogService:
+    def list_resources(self, app_id):
+        if app_id != "stable:bitcoin":
+            return []
+        return [
+            {
+                "id": 2,
+                "app_id": app_id,
+                "resource_type": "directory",
+                "resource_name": "/data/bitcoin",
+                "metadata": {"service": "bitcoin-node"},
+            },
+            {
+                "id": 1,
+                "app_id": app_id,
+                "resource_type": "container",
+                "resource_name": "/bitcoin-node",
+                "metadata": {
+                    "container_id": "container-123",
+                    "image": "lncm/bitcoind:latest",
+                    "status": "running",
+                    "external": False,
+                },
+            },
+        ]
+
     def list_apps(self, **_kwargs):
         return [
             SimpleNamespace(
@@ -210,6 +235,39 @@ class FakeAdoptionService:
         )
 
 
+class FakeDockerManager:
+    def get_container(self, container_id):
+        if container_id in {"container-123", "bitcoin-node"}:
+            return SimpleNamespace(
+                Id="container-123",
+                Name="/bitcoin-node-runtime",
+                Image="lncm/bitcoind:runtime",
+                Status="restarting",
+            )
+        raise RuntimeError("container not found")
+
+
+class FailingDockerManager:
+    def get_container(self, _container_id):
+        raise RuntimeError("docker unavailable")
+
+
+class NameLookupDockerManager:
+    def __init__(self):
+        self.calls = []
+
+    def get_container(self, container_id):
+        self.calls.append(container_id)
+        if container_id == "bitcoin-node":
+            return SimpleNamespace(
+                Id="container-lookup-by-name",
+                Name="/bitcoin-node-live",
+                Image="lncm/bitcoind:live",
+                Status="running",
+            )
+        raise RuntimeError("container not found")
+
+
 def test_list_apps_endpoint_returns_data():
     client = _client()
     with (
@@ -238,7 +296,10 @@ def test_list_apps_endpoint_returns_data():
 
 def test_get_app_detail_endpoint_returns_item():
     client = _client()
-    with patch("hiveden.api.routers.appstore.AppCatalogService", FakeCatalogService):
+    with (
+        patch("hiveden.api.routers.appstore.AppCatalogService", FakeCatalogService),
+        patch("hiveden.api.routers.appstore.DockerManager", FakeDockerManager),
+    ):
         response = client.get("/app-store/apps/bitcoin")
     assert response.status_code == 200
     payload = response.json()
@@ -251,6 +312,130 @@ def test_get_app_detail_endpoint_returns_item():
         "https://raw.githubusercontent.com/"
     )
     assert payload["data"]["dependencies"] == ["postgres"]
+    assert payload["data"]["installed_containers"] == [
+        {
+            "container_id": "container-123",
+            "container_name": "bitcoin-node-runtime",
+            "image": "lncm/bitcoind:runtime",
+            "status": "restarting",
+            "external": False,
+        }
+    ]
+
+
+def test_get_app_detail_endpoint_returns_empty_installed_containers_when_not_installed():
+    client = _client()
+
+    class NotInstalledCatalogService(FakeCatalogService):
+        def get_app(self, app_id):
+            entry = super().get_app(app_id)
+            entry.installed = False
+            entry.install_status = "not_installed"
+            return entry
+
+        def list_resources(self, app_id):
+            raise AssertionError("list_resources should not be called")
+
+    with patch(
+        "hiveden.api.routers.appstore.AppCatalogService",
+        NotInstalledCatalogService,
+    ):
+        response = client.get("/app-store/apps/bitcoin")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["data"]["installed_containers"] == []
+
+
+def test_get_app_detail_endpoint_returns_empty_installed_containers_when_none_linked():
+    client = _client()
+
+    class NoContainerCatalogService(FakeCatalogService):
+        def list_resources(self, app_id):
+            return [
+                {
+                    "id": 9,
+                    "app_id": app_id,
+                    "resource_type": "directory",
+                    "resource_name": "/data/bitcoin",
+                    "metadata": {"service": "bitcoin-node"},
+                }
+            ]
+
+    with patch(
+        "hiveden.api.routers.appstore.AppCatalogService",
+        NoContainerCatalogService,
+    ):
+        response = client.get("/app-store/apps/bitcoin")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["data"]["installed_containers"] == []
+
+
+def test_get_app_detail_endpoint_falls_back_to_stored_container_metadata():
+    client = _client()
+
+    with (
+        patch("hiveden.api.routers.appstore.AppCatalogService", FakeCatalogService),
+        patch("hiveden.api.routers.appstore.DockerManager", FailingDockerManager),
+    ):
+        response = client.get("/app-store/apps/bitcoin")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["data"]["installed_containers"] == [
+        {
+            "container_id": "container-123",
+            "container_name": "bitcoin-node",
+            "image": "lncm/bitcoind:latest",
+            "status": "running",
+            "external": False,
+        }
+    ]
+
+
+def test_get_app_detail_endpoint_enriches_container_by_name_when_id_missing():
+    client = _client()
+    docker_manager = NameLookupDockerManager()
+
+    class NameOnlyCatalogService(FakeCatalogService):
+        def list_resources(self, app_id):
+            return [
+                {
+                    "id": 1,
+                    "app_id": app_id,
+                    "resource_type": "container",
+                    "resource_name": "/bitcoin-node",
+                    "metadata": {
+                        "image": "lncm/bitcoind:latest",
+                        "status": "created",
+                        "external": False,
+                    },
+                }
+            ]
+
+    with (
+        patch("hiveden.api.routers.appstore.AppCatalogService", NameOnlyCatalogService),
+        patch(
+            "hiveden.api.routers.appstore.DockerManager",
+            lambda: docker_manager,
+        ),
+    ):
+        response = client.get("/app-store/apps/bitcoin")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert docker_manager.calls == ["/bitcoin-node", "bitcoin-node"]
+    assert payload["data"]["installed_containers"] == [
+        {
+            "container_id": "container-lookup-by-name",
+            "container_name": "bitcoin-node-live",
+            "image": "lncm/bitcoind:live",
+            "status": "running",
+            "external": False,
+        }
+    ]
 
 
 def test_install_endpoint_returns_job_id():

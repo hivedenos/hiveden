@@ -13,6 +13,7 @@ from hiveden.api.dtos import (
     AppAdoptResponse,
     AppDetail,
     AppDetailResponse,
+    AppInstalledContainer,
     AppInstallRequest,
     AppInstallResponse,
     AppListResponse,
@@ -29,6 +30,7 @@ from hiveden.appstore.catalog_service import AppCatalogService
 from hiveden.appstore.install_service import AppInstallService
 from hiveden.appstore.uninstall_service import AppUninstallService
 from hiveden.config.settings import config
+from hiveden.docker.containers import DockerManager
 from hiveden.jobs.manager import JobManager
 from hiveden.services.logs import LogService
 
@@ -91,6 +93,84 @@ def _to_summary(entry) -> AppSummary:
 
 
 def _to_detail(entry) -> AppDetail:
+    return _to_detail_with_containers(entry, [])
+
+
+def _normalize_container_resource_name(resource_name: Optional[str]) -> str:
+    if not isinstance(resource_name, str):
+        return ""
+    return resource_name.lstrip("/")
+
+
+def _to_installed_container(resource: dict) -> Optional[AppInstalledContainer]:
+    if resource.get("resource_type") != "container":
+        return None
+
+    metadata = resource.get("metadata")
+    if not isinstance(metadata, dict):
+        metadata = {}
+
+    container_id = metadata.get("container_id") or resource.get("resource_name")
+    container_name = _normalize_container_resource_name(resource.get("resource_name"))
+    if not container_id or not container_name:
+        return None
+
+    return AppInstalledContainer.model_validate(
+        {
+            "container_id": container_id,
+            "container_name": container_name,
+            "image": metadata.get("image"),
+            "status": metadata.get("status"),
+            "external": bool(metadata.get("external", False)),
+        }
+    )
+
+
+def _enrich_installed_container(
+    container: AppInstalledContainer, docker_manager: DockerManager
+) -> AppInstalledContainer:
+    lookup_keys = [container.container_id]
+    if container.container_name and container.container_name not in lookup_keys:
+        lookup_keys.append(container.container_name)
+
+    for lookup_key in lookup_keys:
+        try:
+            docker_container = docker_manager.get_container(lookup_key)
+            return AppInstalledContainer.model_validate(
+                {
+                    "container_id": docker_container.Id,
+                    "container_name": _normalize_container_resource_name(
+                        docker_container.Name
+                    ),
+                    "image": docker_container.Image or container.image,
+                    "status": docker_container.Status or container.status,
+                    "external": container.external,
+                }
+            )
+        except Exception:
+            continue
+
+    return container
+
+
+def _resolve_installed_containers(resources: list[dict]) -> list[AppInstalledContainer]:
+    containers = []
+    for resource in resources:
+        container = _to_installed_container(resource)
+        if container:
+            containers.append(container)
+
+    if not containers:
+        return []
+
+    docker_manager = DockerManager()
+    return [
+        _enrich_installed_container(container, docker_manager)
+        for container in containers
+    ]
+
+
+def _to_detail_with_containers(entry, resources: list[dict]) -> AppDetail:
     summary = _to_summary(entry)
     payload = summary.model_dump()
     payload.update(
@@ -107,6 +187,7 @@ def _to_detail(entry) -> AppDetail:
             "search": getattr(entry, "search", {}) or {},
             "dependencies": getattr(entry, "dependencies", []) or [],
             "source_updated_at": getattr(entry, "source_updated_at", None),
+            "installed_containers": _resolve_installed_containers(resources),
         }
     )
     return AppDetail.model_validate(payload)
@@ -306,7 +387,8 @@ def get_app_detail(app_id: str):
     entry = service.get_app(app_id)
     if not entry:
         raise HTTPException(status_code=404, detail=f"App '{app_id}' not found")
-    return AppDetailResponse(data=_to_detail(entry))
+    resources = service.list_resources(entry.catalog_id) if entry.installed else []
+    return AppDetailResponse(data=_to_detail_with_containers(entry, resources))
 
 
 @router.post(
