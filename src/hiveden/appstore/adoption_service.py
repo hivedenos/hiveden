@@ -10,8 +10,16 @@ from hiveden.docker.models import Container
 
 @dataclass
 class AppAdoptionResult:
-    containers: List[Container]
+    containers: List[object]
     warnings: List[str] = field(default_factory=list)
+
+
+@dataclass
+class LinkedContainerReference:
+    Id: str
+    Name: str
+    Image: Optional[str] = None
+    Status: Optional[str] = None
 
 
 class AppAdoptionService:
@@ -44,16 +52,12 @@ class AppAdoptionService:
 
         warnings: List[str] = []
         expected_images = self._get_expected_images(app.compose_url, warnings)
-        resolved: List[Container] = []
+        resolved: List[LinkedContainerReference] = []
         seen_names: Set[str] = set()
 
         for identifier in identifiers:
-            try:
-                container = self.docker.get_container(identifier)
-            except Exception as exc:
-                raise ValueError(f"Container '{identifier}' was not found: {exc}")
-
-            container_name = (container.Name or "").lstrip("/")
+            container = self._resolve_container_reference(identifier)
+            container_name = self._normalize_container_identifier(container.Name)
             if not container_name:
                 raise ValueError(f"Container '{identifier}' does not have a valid name")
             if container_name in seen_names:
@@ -86,14 +90,15 @@ class AppAdoptionService:
                 self.catalog.delete_resource(
                     app_id=app.catalog_id,
                     resource_type="container",
-                    resource_name=container.Name,
+                    resource_name=container_name,
                 )
 
         for container in resolved:
+            container_name = self._normalize_container_identifier(container.Name)
             self.catalog.add_resource(
                 app_id=app.catalog_id,
                 resource_type="container",
-                resource_name=container.Name,
+                resource_name=container_name,
                 metadata={
                     "external": True,
                     "container_id": container.Id,
@@ -120,13 +125,7 @@ class AppAdoptionService:
 
         resource = self._find_linked_container_resource(app.catalog_id, container_id)
         if not resource:
-            if not app.installed:
-                raise ValueError(
-                    f"App '{app.app_id}' is not installed and has no linked container records"
-                )
-            raise ValueError(
-                f"Container '{container_id}' is not linked to app '{app.app_id}'"
-            )
+            return ""
         if not self._is_external_resource(resource):
             raise ValueError(
                 f"Container '{container_id}' was installed by app '{app.app_id}' and cannot be unlinked"
@@ -153,6 +152,22 @@ class AppAdoptionService:
             )
 
         return resource["resource_name"]
+
+    def _resolve_container_reference(self, identifier: str) -> LinkedContainerReference:
+        try:
+            container = self.docker.get_container(identifier)
+            return LinkedContainerReference(
+                Id=container.Id,
+                Name=self._normalize_container_identifier(container.Name),
+                Image=container.Image,
+                Status=container.Status,
+            )
+        except Exception:
+            normalized_identifier = self._normalize_container_identifier(identifier)
+            return LinkedContainerReference(
+                Id=normalized_identifier,
+                Name=normalized_identifier,
+            )
 
     def _validate_conflicts(
         self,
@@ -186,6 +201,8 @@ class AppAdoptionService:
         warnings: List[str],
     ):
         if not expected_images:
+            return
+        if not getattr(container, "Image", None):
             return
 
         container_image = self._normalize_image_ref(container.Image)

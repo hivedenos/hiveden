@@ -576,6 +576,10 @@ def unlink_adopted_app_container(app_id: str, container_id: str):
                 "resource_name": resource_name,
             },
         )
+        if not resource_name:
+            return SuccessResponse(
+                message=f"No linked container resource found for '{container_id}' on app '{app_id}'"
+            )
         return SuccessResponse(
             message=f"Container '{resource_name.lstrip('/')}' unlinked from app '{app_id}'"
         )
@@ -584,8 +588,6 @@ def unlink_adopted_app_container(app_id: str, container_id: str):
         status_code = 400
         if "cannot be unlinked" in detail:
             status_code = 409
-        elif "not linked to app" in detail:
-            status_code = 404
         elif "currently" in detail or "not installed" in detail:
             status_code = 409
         raise HTTPException(status_code=status_code, detail=detail)

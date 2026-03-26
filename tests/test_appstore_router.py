@@ -240,9 +240,7 @@ class FakeAdoptionService:
                 "Container 'managed-container' was installed by app 'bitcoin' and cannot be unlinked"
             )
         if container_id == "missing-container":
-            raise ValueError(
-                "Container 'missing-container' is not linked to app 'bitcoin'"
-            )
+            return ""
         return "/adopted-container"
 
 
@@ -586,6 +584,18 @@ def test_unlink_adopted_container_endpoint_blocks_managed_container():
 
     assert response.status_code == 409
     assert "cannot be unlinked" in response.json()["detail"]
+
+
+def test_unlink_adopted_container_endpoint_is_noop_when_resource_missing():
+    client = _client()
+    with (
+        patch("hiveden.api.routers.appstore.AppCatalogService", FakeCatalogService),
+        patch("hiveden.api.routers.appstore.AppAdoptionService", FakeAdoptionService),
+    ):
+        response = client.delete("/app-store/apps/bitcoin/containers/missing-container")
+
+    assert response.status_code == 200
+    assert "No linked container resource found" in response.json()["message"]
 
 
 def test_adopt_endpoint_requires_container_list():

@@ -85,6 +85,11 @@ class _FakeDocker:
         )
 
 
+class _MissingDocker:
+    def get_container(self, _identifier):
+        raise RuntimeError("container missing")
+
+
 def test_adopt_app_links_external_container_and_marks_installed():
     service = AppAdoptionService.__new__(AppAdoptionService)
     service.catalog = _FakeCatalog()
@@ -117,6 +122,25 @@ def test_adopt_app_rejects_image_mismatch_without_force():
         assert False, "Expected ValueError"
     except ValueError as exc:
         assert "does not match expected images" in str(exc)
+
+
+def test_adopt_app_persists_resource_when_container_missing_from_docker():
+    service = AppAdoptionService.__new__(AppAdoptionService)
+    service.catalog = _FakeCatalog()
+    service.docker = _MissingDocker()
+    service._get_expected_images = lambda _compose_url, _warnings: {"pihole/pihole"}
+
+    result = service.adopt_app(
+        app_id="pi-hole",
+        container_names_or_ids=["pihole"],
+    )
+
+    assert len(result.containers) == 1
+    assert result.containers[0].Id == "pihole"
+    assert result.containers[0].Name == "pihole"
+    assert service.catalog.resources[0]["resource_name"] == "pihole"
+    assert service.catalog.resources[0]["metadata"]["container_id"] == "pihole"
+    assert service.catalog.resources[0]["metadata"]["external"] is True
 
 
 def test_unlink_adopted_container_removes_external_resource():
