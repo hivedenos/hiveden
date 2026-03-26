@@ -283,9 +283,30 @@ class AppAdoptionService:
                 for candidate in candidates
                 if isinstance(candidate, str) and candidate.strip()
             }
+            normalized_candidates.update(self._resolve_runtime_identifiers(resource))
             if normalized_identifier in normalized_candidates:
                 return resource
         return None
+
+    def _resolve_runtime_identifiers(self, resource: dict) -> Set[str]:
+        identifiers: Set[str] = set()
+        metadata = resource.get("metadata")
+        if not isinstance(metadata, dict):
+            metadata = {}
+
+        lookup_keys = [resource.get("resource_name"), metadata.get("container_id")]
+        for lookup_key in lookup_keys:
+            normalized_lookup = self._normalize_container_identifier(lookup_key)
+            if not normalized_lookup:
+                continue
+            try:
+                container = self.docker.get_container(normalized_lookup)
+            except Exception:
+                continue
+            identifiers.add(self._normalize_container_identifier(container.Id))
+            identifiers.add(self._normalize_container_identifier(container.Name))
+
+        return identifiers
 
     def _normalize_container_identifier(self, value: Optional[str]) -> str:
         if not isinstance(value, str):

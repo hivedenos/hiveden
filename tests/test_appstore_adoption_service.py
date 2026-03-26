@@ -90,6 +90,18 @@ class _MissingDocker:
         raise RuntimeError("container missing")
 
 
+class _RuntimeIdDocker:
+    def get_container(self, identifier):
+        if identifier == "pihole":
+            return SimpleNamespace(
+                Id="runtime-abc123",
+                Name="/pihole",
+                Image="pihole/pihole:latest",
+                Status="running",
+            )
+        raise RuntimeError("container missing")
+
+
 def test_adopt_app_links_external_container_and_marks_installed():
     service = AppAdoptionService.__new__(AppAdoptionService)
     service.catalog = _FakeCatalog()
@@ -252,3 +264,41 @@ def test_unlink_adopted_container_uses_db_record_when_app_state_is_stale():
         }
     ]
     assert service.catalog.status_calls[-1]["status"] == "not_installed"
+
+
+def test_unlink_adopted_container_matches_live_runtime_id_from_linked_name():
+    service = AppAdoptionService.__new__(AppAdoptionService)
+    service.catalog = _FakeCatalog()
+    service.docker = _RuntimeIdDocker()
+    service.catalog.get_app = lambda app_id: SimpleNamespace(
+        catalog_id=f"stable:{app_id}",
+        app_id=app_id,
+        version="1.0.0",
+        compose_url="https://example.com/docker-compose.yml",
+        install_status="installed",
+        installed=True,
+        installable=True,
+        install_block_reason=None,
+    )
+    service.catalog.resources = [
+        {
+            "app_id": "stable:pi-hole",
+            "resource_type": "container",
+            "resource_name": "pihole",
+            "metadata": {
+                "container_id": "stored-old-id",
+                "external": True,
+            },
+        }
+    ]
+
+    resource_name = service.unlink_adopted_container("pi-hole", "runtime-abc123")
+
+    assert resource_name == "pihole"
+    assert service.catalog.deleted_resources == [
+        {
+            "app_id": "stable:pi-hole",
+            "resource_type": "container",
+            "resource_name": "pihole",
+        }
+    ]
