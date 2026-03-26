@@ -189,3 +189,42 @@ def test_unlink_adopted_container_rejects_managed_container():
         assert False, "Expected ValueError"
     except ValueError as exc:
         assert "cannot be unlinked" in str(exc)
+
+
+def test_unlink_adopted_container_uses_db_record_when_app_state_is_stale():
+    service = AppAdoptionService.__new__(AppAdoptionService)
+    service.catalog = _FakeCatalog()
+    service.docker = _FakeDocker()
+    service.catalog.get_app = lambda app_id: SimpleNamespace(
+        catalog_id=f"stable:{app_id}",
+        app_id=app_id,
+        version="1.0.0",
+        compose_url="https://example.com/docker-compose.yml",
+        install_status="not_installed",
+        installed=False,
+        installable=True,
+        install_block_reason=None,
+    )
+    service.catalog.resources = [
+        {
+            "app_id": "stable:pi-hole",
+            "resource_type": "container",
+            "resource_name": "/pihole",
+            "metadata": {
+                "container_id": "abc123",
+                "external": True,
+            },
+        }
+    ]
+
+    resource_name = service.unlink_adopted_container("pi-hole", "abc123")
+
+    assert resource_name == "/pihole"
+    assert service.catalog.deleted_resources == [
+        {
+            "app_id": "stable:pi-hole",
+            "resource_type": "container",
+            "resource_name": "/pihole",
+        }
+    ]
+    assert service.catalog.status_calls[-1]["status"] == "not_installed"

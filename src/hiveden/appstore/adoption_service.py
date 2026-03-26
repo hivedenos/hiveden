@@ -117,11 +117,13 @@ class AppAdoptionService:
             raise ValueError(f"App '{app_id}' was not found in catalog")
         if app.install_status in {"installing", "uninstalling"}:
             raise ValueError(f"App '{app.app_id}' is currently {app.install_status}")
-        if not app.installed:
-            raise ValueError(f"App '{app.app_id}' is not installed")
 
         resource = self._find_linked_container_resource(app.catalog_id, container_id)
         if not resource:
+            if not app.installed:
+                raise ValueError(
+                    f"App '{app.app_id}' is not installed and has no linked container records"
+                )
             raise ValueError(
                 f"Container '{container_id}' is not linked to app '{app.app_id}'"
             )
