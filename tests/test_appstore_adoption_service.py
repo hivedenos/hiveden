@@ -7,23 +7,46 @@ class _FakeCatalog:
     def __init__(self):
         self.resources = []
         self.status_calls = []
+        self.deleted_resources = []
 
     def get_app(self, app_id):
         return SimpleNamespace(
+            catalog_id=f"stable:{app_id}",
             app_id=app_id,
             version="1.0.0",
             compose_url="https://example.com/docker-compose.yml",
             install_status="not_installed",
+            installed=False,
+            installable=True,
+            install_block_reason=None,
         )
 
     def list_container_resource_owners(self, container_name, exclude_app_id=None):
         return []
 
+    def list_resources(self, app_id):
+        return [item for item in self.resources if item["app_id"] == app_id]
+
     def delete_resources_by_type(self, app_id, resource_type):
         return None
 
     def delete_resource(self, app_id, resource_type, resource_name):
-        return None
+        self.deleted_resources.append(
+            {
+                "app_id": app_id,
+                "resource_type": resource_type,
+                "resource_name": resource_name,
+            }
+        )
+        self.resources = [
+            item
+            for item in self.resources
+            if not (
+                item["app_id"] == app_id
+                and item["resource_type"] == resource_type
+                and item["resource_name"] == resource_name
+            )
+        ]
 
     def add_resource(self, app_id, resource_type, resource_name, metadata=None):
         self.resources.append(
@@ -94,3 +117,75 @@ def test_adopt_app_rejects_image_mismatch_without_force():
         assert False, "Expected ValueError"
     except ValueError as exc:
         assert "does not match expected images" in str(exc)
+
+
+def test_unlink_adopted_container_removes_external_resource():
+    service = AppAdoptionService.__new__(AppAdoptionService)
+    service.catalog = _FakeCatalog()
+    service.docker = _FakeDocker()
+    service.catalog.get_app = lambda app_id: SimpleNamespace(
+        catalog_id=f"stable:{app_id}",
+        app_id=app_id,
+        version="1.0.0",
+        compose_url="https://example.com/docker-compose.yml",
+        install_status="installed",
+        installed=True,
+        installable=True,
+        install_block_reason=None,
+    )
+    service.catalog.resources = [
+        {
+            "app_id": "stable:pi-hole",
+            "resource_type": "container",
+            "resource_name": "/pihole",
+            "metadata": {
+                "container_id": "abc123",
+                "external": True,
+            },
+        }
+    ]
+
+    resource_name = service.unlink_adopted_container("pi-hole", "abc123")
+
+    assert resource_name == "/pihole"
+    assert service.catalog.deleted_resources == [
+        {
+            "app_id": "stable:pi-hole",
+            "resource_type": "container",
+            "resource_name": "/pihole",
+        }
+    ]
+    assert service.catalog.status_calls[-1]["status"] == "not_installed"
+
+
+def test_unlink_adopted_container_rejects_managed_container():
+    service = AppAdoptionService.__new__(AppAdoptionService)
+    service.catalog = _FakeCatalog()
+    service.docker = _FakeDocker()
+    service.catalog.get_app = lambda app_id: SimpleNamespace(
+        catalog_id=f"stable:{app_id}",
+        app_id=app_id,
+        version="1.0.0",
+        compose_url="https://example.com/docker-compose.yml",
+        install_status="installed",
+        installed=True,
+        installable=True,
+        install_block_reason=None,
+    )
+    service.catalog.resources = [
+        {
+            "app_id": "stable:pi-hole",
+            "resource_type": "container",
+            "resource_name": "/pihole",
+            "metadata": {
+                "container_id": "abc123",
+                "external": False,
+            },
+        }
+    ]
+
+    try:
+        service.unlink_adopted_container("pi-hole", "abc123")
+        assert False, "Expected ValueError"
+    except ValueError as exc:
+        assert "cannot be unlinked" in str(exc)

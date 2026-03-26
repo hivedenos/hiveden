@@ -350,6 +350,7 @@ class AppInstalledContainer(BaseModel):
     image: Optional[str] = None
     status: Optional[str] = None
     external: bool = False
+    can_unlink: bool = False
 
 
 class AppDetail(AppSummary):
@@ -416,6 +417,7 @@ class AppCacheClearInfo(BaseModel):
 
 class AppAdoptedContainer(AppInstalledContainer):
     external: bool = True
+    can_unlink: bool = True
 
 
 class AppAdoptResult(BaseModel):

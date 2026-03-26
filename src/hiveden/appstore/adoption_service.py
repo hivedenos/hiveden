@@ -111,6 +111,47 @@ class AppAdoptionService:
 
         return AppAdoptionResult(containers=resolved, warnings=warnings)
 
+    def unlink_adopted_container(self, app_id: str, container_id: str) -> str:
+        app = self.catalog.get_app(app_id)
+        if not app:
+            raise ValueError(f"App '{app_id}' was not found in catalog")
+        if app.install_status in {"installing", "uninstalling"}:
+            raise ValueError(f"App '{app.app_id}' is currently {app.install_status}")
+        if not app.installed:
+            raise ValueError(f"App '{app.app_id}' is not installed")
+
+        resource = self._find_linked_container_resource(app.catalog_id, container_id)
+        if not resource:
+            raise ValueError(
+                f"Container '{container_id}' is not linked to app '{app.app_id}'"
+            )
+        if not self._is_external_resource(resource):
+            raise ValueError(
+                f"Container '{container_id}' was installed by app '{app.app_id}' and cannot be unlinked"
+            )
+
+        self.catalog.delete_resource(
+            app_id=app.catalog_id,
+            resource_type="container",
+            resource_name=resource["resource_name"],
+        )
+
+        remaining_resources = self.catalog.list_resources(app.catalog_id)
+        remaining_containers = [
+            item
+            for item in remaining_resources
+            if item.get("resource_type") == "container"
+        ]
+        if not remaining_containers:
+            self.catalog.set_installation_status(
+                app_id=app.catalog_id,
+                status="not_installed",
+                installed_version=None,
+                last_error=None,
+            )
+
+        return resource["resource_name"]
+
     def _validate_conflicts(
         self,
         app_id: str,
@@ -202,3 +243,38 @@ class AppAdoptionService:
             without_tag = without_digest
 
         return without_tag
+
+    def _find_linked_container_resource(
+        self, catalog_id: str, container_id: str
+    ) -> Optional[dict]:
+        normalized_identifier = self._normalize_container_identifier(container_id)
+        for resource in self.catalog.list_resources(catalog_id):
+            if resource.get("resource_type") != "container":
+                continue
+            metadata = resource.get("metadata")
+            if not isinstance(metadata, dict):
+                metadata = {}
+
+            candidates = [
+                resource.get("resource_name"),
+                metadata.get("container_id"),
+            ]
+            normalized_candidates = {
+                self._normalize_container_identifier(candidate)
+                for candidate in candidates
+                if isinstance(candidate, str) and candidate.strip()
+            }
+            if normalized_identifier in normalized_candidates:
+                return resource
+        return None
+
+    def _normalize_container_identifier(self, value: Optional[str]) -> str:
+        if not isinstance(value, str):
+            return ""
+        return value.strip().lstrip("/")
+
+    def _is_external_resource(self, resource: dict) -> bool:
+        metadata = resource.get("metadata")
+        if not isinstance(metadata, dict):
+            return False
+        return bool(metadata.get("external", False))

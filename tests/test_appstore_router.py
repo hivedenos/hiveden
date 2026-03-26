@@ -234,6 +234,17 @@ class FakeAdoptionService:
             warnings=[],
         )
 
+    def unlink_adopted_container(self, _app_id, container_id):
+        if container_id == "managed-container":
+            raise ValueError(
+                "Container 'managed-container' was installed by app 'bitcoin' and cannot be unlinked"
+            )
+        if container_id == "missing-container":
+            raise ValueError(
+                "Container 'missing-container' is not linked to app 'bitcoin'"
+            )
+        return "/adopted-container"
+
 
 class FakeDockerManager:
     def get_container(self, container_id):
@@ -319,6 +330,7 @@ def test_get_app_detail_endpoint_returns_item():
             "image": "lncm/bitcoind:runtime",
             "status": "restarting",
             "external": False,
+            "can_unlink": False,
         }
     ]
 
@@ -391,6 +403,7 @@ def test_get_app_detail_endpoint_falls_back_to_stored_container_metadata():
             "image": "lncm/bitcoind:latest",
             "status": "running",
             "external": False,
+            "can_unlink": False,
         }
     ]
 
@@ -434,6 +447,7 @@ def test_get_app_detail_endpoint_enriches_container_by_name_when_id_missing():
             "image": "lncm/bitcoind:live",
             "status": "running",
             "external": False,
+            "can_unlink": False,
         }
     ]
 
@@ -542,7 +556,36 @@ def test_adopt_endpoint_returns_linked_containers():
     assert payload["data"]["app"]["app_id"] == "bitcoin"
     assert payload["data"]["containers"][0]["container_name"] == "pihole"
     assert payload["data"]["containers"][0]["external"] is True
+    assert payload["data"]["containers"][0]["can_unlink"] is True
     log_service.return_value.info.assert_called()
+
+
+def test_unlink_adopted_container_endpoint_returns_success():
+    client = _client()
+    with (
+        patch("hiveden.api.routers.appstore.AppCatalogService", FakeCatalogService),
+        patch("hiveden.api.routers.appstore.AppAdoptionService", FakeAdoptionService),
+        patch("hiveden.api.routers.appstore.LogService") as log_service,
+    ):
+        response = client.delete("/app-store/apps/bitcoin/containers/adopted-container")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "success"
+    assert "unlinked from app" in payload["message"]
+    log_service.return_value.info.assert_called()
+
+
+def test_unlink_adopted_container_endpoint_blocks_managed_container():
+    client = _client()
+    with (
+        patch("hiveden.api.routers.appstore.AppCatalogService", FakeCatalogService),
+        patch("hiveden.api.routers.appstore.AppAdoptionService", FakeAdoptionService),
+    ):
+        response = client.delete("/app-store/apps/bitcoin/containers/managed-container")
+
+    assert response.status_code == 409
+    assert "cannot be unlinked" in response.json()["detail"]
 
 
 def test_adopt_endpoint_requires_container_list():

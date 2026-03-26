@@ -21,6 +21,7 @@ from hiveden.api.dtos import (
     AppPromotionRequestInfo,
     AppPromotionRequestResponse,
     AppSummary,
+    SuccessResponse,
     AppSyncResponse,
     AppUninstallRequest,
 )
@@ -122,6 +123,7 @@ def _to_installed_container(resource: dict) -> Optional[AppInstalledContainer]:
             "image": metadata.get("image"),
             "status": metadata.get("status"),
             "external": bool(metadata.get("external", False)),
+            "can_unlink": bool(metadata.get("external", False)),
         }
     )
 
@@ -145,6 +147,7 @@ def _enrich_installed_container(
                     "image": docker_container.Image or container.image,
                     "status": docker_container.Status or container.status,
                     "external": container.external,
+                    "can_unlink": container.can_unlink,
                 }
             )
         except Exception:
@@ -549,6 +552,43 @@ def adopt_existing_app_containers(app_id: str, payload: AppAdoptRequest):
             traceback.format_exc(),
         )
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.delete(
+    "/apps/{app_id}/containers/{container_id}", response_model=SuccessResponse
+)
+def unlink_adopted_app_container(app_id: str, container_id: str):
+    service = AppCatalogService()
+    app = service.get_app(app_id)
+    if not app:
+        raise HTTPException(status_code=404, detail=f"App '{app_id}' not found")
+
+    adoption_service = AppAdoptionService()
+    try:
+        resource_name = adoption_service.unlink_adopted_container(app_id, container_id)
+        _appstore_log_info(
+            action="unlink_app_container",
+            message=f"Unlinked adopted container from {app.app_id}",
+            metadata={
+                "catalog_id": app.catalog_id,
+                "app_id": app.app_id,
+                "container_id": container_id,
+                "resource_name": resource_name,
+            },
+        )
+        return SuccessResponse(
+            message=f"Container '{resource_name.lstrip('/')}' unlinked from app '{app_id}'"
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        status_code = 400
+        if "cannot be unlinked" in detail:
+            status_code = 409
+        elif "not linked to app" in detail:
+            status_code = 404
+        elif "currently" in detail or "not installed" in detail:
+            status_code = 409
+        raise HTTPException(status_code=status_code, detail=detail)
 
 
 @router.post(
